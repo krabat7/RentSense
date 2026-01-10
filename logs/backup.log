@@ -1,0 +1,10 @@
+2026-01-10 03:00:01 | Creating local backup...
+2026-01-10 03:00:03 | ✓ Backup created: rentsense_backup_20260110_030001.sql.gz (Size: 268K)
+2026-01-10 03:00:03 | Attempting upload to Yandex Object Storage...
+2026-01-10 03:00:12 | ✓ Uploaded to Yandex Object Storage
+2026-01-10 03:00:12 | Old backups cleaned. Total backups: 6
+
+2026-01-10 03:00:12 | ✓ Backup completed:
+  Local: /root/rentsense/backups/rentsense_backup_20260110_030001.sql.gz (268K)
+  Total backups stored: 6
+  Cloud: ✓ Uploaded to Yandex Object Storage
