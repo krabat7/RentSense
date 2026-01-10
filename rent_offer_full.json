@@ -1,0 +1,319 @@
+{
+  "category": "flatRent",
+  "status": "draft",
+  "dealType": "rent",
+  "offerType": "flat",
+  "geo": {
+    "address": [
+      {
+        "fullName": "Москва",
+        "id": 1,
+        "locationTypeId": 1,
+        "name": "Москва",
+        "shortName": "Москва",
+        "type": "location",
+        "url": "https://www.cian.ru/snyat-2-komnatnuyu-kvartiru/"
+      },
+      {
+        "fullName": "Автозаводская улица",
+        "id": 574,
+        "locationTypeId": -1,
+        "name": "Автозаводская",
+        "shortName": "Автозаводская ул.",
+        "type": "street",
+        "url": "https://www.cian.ru/snyat-2-komnatnuyu-kvartiru-moskva-avtozavodskaya-ulica-02574/"
+      },
+      {
+        "fullName": "17К1",
+        "id": 1134,
+        "locationTypeId": -1,
+        "name": "17К1",
+        "shortName": "17К1",
+        "type": "house",
+        "url": "https://www.cian.ru/cat.php?deal_type=rent&engine_version=2&house%5B0%5D=1134&offer_type=flat&room2=1&type=4"
+      }
+    ],
+    "coordinates": {
+      "lat": 55.704473,
+      "lng": 37.653873
+    },
+    "highways": [],
+    "railways": [
+      {
+        "id": 690,
+        "directionIds": [
+          17
+        ],
+        "distance": "4.0",
+        "time": 57,
+        "name": "Москва (Павелецкий вокзал)",
+        "travelType": "byFoot"
+      },
+      {
+        "id": 709,
+        "directionIds": [
+          17
+        ],
+        "distance": "5.0",
+        "time": 60,
+        "name": "Нижние Котлы",
+        "travelType": "byFoot"
+      },
+      {
+        "id": 698,
+        "directionIds": [
+          12,
+          15
+        ],
+        "distance": "5.0",
+        "time": 9,
+        "name": "Серп и молот",
+        "travelType": "byCar"
+      },
+      {
+        "id": 698,
+        "directionIds": [
+          12,
+          15
+        ],
+        "distance": "5.0",
+        "time": 71,
+        "name": "Серп и молот",
+        "travelType": "byFoot"
+      },
+      {
+        "id": 690,
+        "directionIds": [
+          17
+        ],
+        "distance": "6.0",
+        "time": 11,
+        "name": "Москва (Павелецкий вокзал)",
+        "travelType": "byCar"
+      },
+      {
+        "id": 709,
+        "directionIds": [
+          17
+        ],
+        "distance": "6.0",
+        "time": 8,
+        "name": "Нижние Котлы",
+        "travelType": "byCar"
+      }
+    ],
+    "undergrounds": [
+      {
+        "id": 2,
+        "name": "Автозаводская",
+        "lineColor": "00701A",
+        "travelType": "walk",
+        "travelTime": 5,
+        "url": "https://www.cian.ru/snyat-2-komnatnuyu-kvartiru-moskva-stanciya-mck-avtozavodskaya-2/",
+        "underConstruction": false
+      },
+      {
+        "id": 306,
+        "name": "ЗИЛ",
+        "lineColor": "FA6F9E",
+        "travelType": "walk",
+        "travelTime": 10,
+        "url": "https://www.cian.ru/snyat-2-komnatnuyu-kvartiru-moskva-stanciya-mck-zil-306/",
+        "underConstruction": false,
+        "lineType": "mck"
+      },
+      {
+        "id": 40,
+        "name": "Дубровка",
+        "lineColor": "8AD02A",
+        "travelType": "walk",
+        "travelTime": 24,
+        "url": "https://www.cian.ru/snyat-2-komnatnuyu-kvartiru-moskva-stanciya-mck-dubrovka-40/",
+        "underConstruction": false
+      }
+    ]
+  },
+  "id": 311739319,
+  "objectGuid": "a72126b1-672c-49d4-a16f-5cee28e333e2",
+  "cianId": 311739319,
+  "userId": 85033453,
+  "publishedUserId": 85033453,
+  "cianUserId": 85033453,
+  "isByHomeowner": false,
+  "title": "Новая мебелированная 2-к",
+  "description": "Объявление снято с публикации, поищите ещё что-нибудь",
+  "photos": null,
+  "phones": [],
+  "publishTerms": {
+    "terms": [
+      {
+        "services": [
+          "paid"
+        ],
+        "days": 30,
+        "type": "periodical",
+        "tariffIdentificator": {
+          "tariffId": 1005400,
+          "tariffGridType": "packageTariff"
+        }
+      }
+    ],
+    "autoprolong": false
+  },
+  "flatType": "rooms",
+  "isApartments": true,
+  "isPenthouse": false,
+  "totalArea": "34.0",
+  "livingArea": 16,
+  "kitchenArea": 12,
+  "loggiasCount": 0,
+  "balconiesCount": 0,
+  "windowsViewType": "yard",
+  "separateWcsCount": 0,
+  "combinedWcsCount": 1,
+  "repairType": "design",
+  "hasPhone": false,
+  "hasFridge": true,
+  "hasDishwasher": true,
+  "hasWasher": true,
+  "hasFurniture": true,
+  "hasKitchenFurniture": true,
+  "hasConditioner": true,
+  "hasTv": true,
+  "hasInternet": true,
+  "hasBathtub": false,
+  "hasShower": true,
+  "childrenAllowed": true,
+  "petsAllowed": true,
+  "land": {},
+  "flags": {
+    "isArchived": true,
+    "isCommercialOwnershipVerified": false
+  },
+  "house": {},
+  "specialty": {
+    "types": [],
+    "additionalTypes": []
+  },
+  "isNeedHideExactAddress": false,
+  "electricity": {},
+  "gas": {},
+  "water": {},
+  "drainage": {},
+  "garage": {},
+  "areaParts": [],
+  "roomsCount": 2,
+  "floorNumber": 2,
+  "bedsCount": 0,
+  "bargainTerms": {
+    "price": 80000,
+    "priceType": "all",
+    "currency": "rur",
+    "paymentPeriod": "monthly",
+    "leaseTermType": "longTerm",
+    "prepayMonths": 1,
+    "deposit": 80000,
+    "utilitiesTerms": {
+      "includedInPrice": true,
+      "price": 0,
+      "flowMetersNotIncludedInPrice": true
+    },
+    "includedOptions": [],
+    "clientFee": 70,
+    "agentFee": 0,
+    "prices": {
+      "rur": 80000,
+      "usd": 1023,
+      "eur": 869
+    },
+    "depositPrices": {
+      "rur": 80000,
+      "usd": 1023,
+      "eur": 869
+    },
+    "utilitiesTermsPrices": {
+      "rur": 0,
+      "usd": 0,
+      "eur": 0
+    },
+    "tags": []
+  },
+  "building": {
+    "floorsCount": 5,
+    "parking": {
+      "type": "ground"
+    },
+    "totalArea": 34,
+    "infrastructure": {},
+    "openingHours": {},
+    "liftTypes": [],
+    "cranageTypes": [],
+    "passengerLiftsCount": 0,
+    "cargoLiftsCount": 0,
+    "deadline": {}
+  },
+  "archivedDate": "2025-10-27T21:21:04.804748+00:00",
+  "editDate": "2025-10-27T21:21:04.818393+00:00",
+  "humanizedEditDate": "28 окт, 00:21",
+  "isInHiddenBase": false,
+  "videos": [],
+  "exportLinks": {
+    "pdfUrl": "/export/pdf/rent/flat/311739319/",
+    "docxUrl": "/export/docx/rent/flat/311739319/"
+  },
+  "passengerLiftsCount": 0,
+  "cargoLiftsCount": 0,
+  "valueAddedServices": {
+    "isStandard": false,
+    "isTop3": false,
+    "isPremium": false
+  },
+  "promotion": {
+    "isPerformanceVasPilot": false,
+    "promotionDescription": ""
+  },
+  "categoriesIds": [],
+  "creationDate": "2024-12-26T15:22:57.397",
+  "recoveryLink": "/razmestit-obyavlenie/311739319/",
+  "trackingData": {
+    "moId": 0,
+    "oblId": 1,
+    "cityId": 1,
+    "fbRegion": "Москва",
+    "fbCity": "Москва"
+  },
+  "editPhoto": "/realty/add2.aspx?id=311739319",
+  "newEdit": "/razmestit-obyavlenie/?realty_id=311739319",
+  "certificate": "https://www.cian.ru/newobjects/cian/certification/get?announcementId=311739319",
+  "edit": "/realty/add1.aspx?id=311739319",
+  "similarOffersLink": "",
+  "similarOffersCount": 0,
+  "isImported": false,
+  "userConfirmedFix": false,
+  "isEnabledCallTracking": false,
+  "booking": {},
+  "isRentByParts": false,
+  "isDuplicate": false,
+  "showWarningMessage": false,
+  "isUnique": false,
+  "isUniqueCheckDate": "2026-01-07",
+  "isCianPartner": false,
+  "isIllegalConstruction": false,
+  "amenities": [],
+  "externalOfferUrl": "",
+  "cianLayouts": null,
+  "newbuilding": {
+    "id": 0,
+    "isFromBuilder": false,
+    "isFromDeveloper": false,
+    "isFromLeadFactory": false,
+    "isFromSeller": false,
+    "isReliable": false,
+    "isTariffPremium": false,
+    "isPremium": false,
+    "name": "",
+    "newbuildingFeatures": null,
+    "showJkReliableFlag": false
+  },
+  "demolishedInMoscowProgramm": false
+}

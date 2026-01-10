@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "rentsense"
+version = "0.1.0"
+description = "Сервис прогнозирования рыночной стоимости аренды жилья"
+authors = ["Семён Черемисин"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.flake8]
+max-line-length = 100
+exclude = [".git", "__pycache__", "build", "dist"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+

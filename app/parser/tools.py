@@ -1,0 +1,92 @@
+import json
+import logging
+import re
+import time
+from dotenv import dotenv_values
+
+def recjson(regex, data, ident=None):
+    match = re.search(regex, data)
+    if not match:
+        logging.error('Recjson not match')
+        return
+    start_idx = match.start(1)
+    end_idx, open_brackets = start_idx + 1, 1
+    while open_brackets > 0 and end_idx < len(data):
+        open_brackets += 1 if data[end_idx] == '{' else -1 if data[end_idx] == '}' else 0
+        end_idx += 1
+    if ident:
+        json_str = f"{{'{ident}': {data[start_idx:end_idx]}}}"
+    else:
+        json_str = data[start_idx:end_idx]
+    try:
+        fdata = json.loads(json_str)
+        return fdata
+    except Exception as ex:
+        logging.error(f'Recjson error: {ex}')
+        return
+
+formatter = '%(asctime)s | %(levelname)s: %(message)s'
+datefmt = '%Y-%m-%d %H:%M:%S'
+logging.basicConfig(
+    format=formatter,
+    datefmt=datefmt,
+    level=logging.INFO,
+    filename='rentsense.log',
+    filemode='a'
+)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter(formatter, datefmt))
+logging.getLogger().addHandler(console_handler)
+
+env = dotenv_values()
+proxyDict = {
+    proxy: 0.0
+    for proxy in (env.get(f'PROXY{i}') for i in range(1, 15)) if proxy  # Поддержка до PROXY14
+}
+proxyDict[''] = 0.0
+
+# Словарь для отслеживания времени последней блокировки прокси
+# Используется для разморозки заблокированных прокси
+# Инициализируем после заполнения proxyDict
+proxyBlockedTime = {proxy: 0.0 for proxy in proxyDict.keys()}
+
+# Счетчик ошибок для каждого прокси (не блокируем сразу после первой ошибки)
+proxyErrorCount = {proxy: 0 for proxy in proxyDict.keys()}
+
+def check_and_unfreeze_proxies():
+    """
+    Проверяет заблокированные прокси и размораживает их через определенное время.
+    Это позволяет прокси "отдохнуть" и снова начать работать.
+    """
+    current_time = time.time()
+    unfrozen_count = 0
+    
+    for proxy, blocked_until in proxyDict.items():
+        # Если прокси заблокирован более чем на 5 минут, проверяем его
+        if blocked_until > current_time:
+            blocked_duration = blocked_until - current_time
+            # Если прокси заблокирован более 5 минут, пробуем разморозить через 10 минут после блокировки
+            if blocked_duration > (5 * 60) and proxyBlockedTime[proxy] > 0:
+                time_since_block = current_time - proxyBlockedTime[proxy]
+                # Размораживаем через 10 минут после блокировки (или если прошло больше 30 минут)
+                if time_since_block > (10 * 60) or blocked_duration > (30 * 60):
+                    logging.info(f'Attempting to unfreeze proxy {proxy[:20]}... (blocked for {blocked_duration/60:.1f} min)')
+                    # Сбрасываем время блокировки, но оставляем небольшую задержку
+                    proxyDict[proxy] = current_time + 30  # Даем 30 секунд перед повторным использованием
+                    proxyBlockedTime[proxy] = 0
+                    unfrozen_count += 1
+    
+    if unfrozen_count > 0:
+        logging.info(f'Unfrozen {unfrozen_count} proxy/proxies')
+    
+    return unfrozen_count
+
+headers = [
+    {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.90 Safari/537.36"},
+    {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.2 Safari/605.1.15"},
+    {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Gecko/20100101 Firefox/118.0"},
+    {"User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:118.0) Gecko/20100101 Firefox/118.0"},
+    {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; Trident/7.0; AS; rv:11.0) like Gecko"},
+]
+
+
