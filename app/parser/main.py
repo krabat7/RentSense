@@ -30,6 +30,8 @@ def close_browser():
         _playwright = None
 
 def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
+    logging.info(f'getResponse: Starting for page={page}, type={type}, respTry={respTry}, sort={sort}, rooms={rooms}')
+    
     if respTry == 5:
         check_and_unfreeze_proxies()
     
@@ -63,6 +65,117 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             # Нет прокси в словаре, используем пустой
             proxy = ''
             logging.warning('No proxies configured, using no proxy')
+    
+    # Формируем URL и параметры запроса
+    if type == 1:  # Страница объявления
+        url = f'{URL}/sale/flat/{page}/'
+    else:  # Список страниц (type=0)
+        params = {
+            'deal_type': 'sale',
+            'offer_type': 'flat',
+            'p': page,
+            'region': 1,
+        }
+        if rooms:
+            params[rooms] = 1
+        if sort:
+            params['sort'] = sort
+        # Формируем URL с параметрами
+        param_str = '&'.join([f'{k}={v}' for k, v in params.items()])
+        url = f'{URL}/cat.php?{param_str}'
+    
+    logging.info(f'getResponse: URL={url[:100]}..., proxy={proxy[:50] if proxy else "none"}...')
+    
+    # Делаем запрос через Playwright
+    try:
+        browser = _get_browser()
+        context_options = {}
+        
+        # Устанавливаем User-Agent
+        if headers:
+            user_agent = random.choice(headers).get('User-Agent')
+            if user_agent:
+                context_options['user_agent'] = user_agent
+        
+        # Устанавливаем прокси
+        if proxy:
+            context_options['proxy'] = {'server': proxy}
+        
+        context = browser.new_context(**context_options)
+        page_obj = context.new_page()
+        
+        start_time = time.time()
+        response = page_obj.goto(url, wait_until='networkidle', timeout=30000)
+        elapsed = time.time() - start_time
+        
+        if response:
+            status = response.status
+            logging.info(f'getResponse: Status={status}, time={elapsed:.2f}s, proxy={proxy[:50] if proxy else "none"}...')
+            
+            if status != 200:
+                logging.error(f'getResponse: Page {page} | Retry: {respTry} | Status: {status}')
+                page_obj.close()
+                context.close()
+                
+                if not respTry:
+                    logging.warning(f'getResponse: No retries left, returning None')
+                    return None
+                
+                # Блокируем прокси при ошибках
+                if status in (403, 429):
+                    proxyDict[proxy] = time.time() + (15 * 60)  # 15 минут блокировки
+                    proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                    if proxyErrorCount[proxy] >= 2:
+                        proxyBlockedTime[proxy] = time.time() + (20 * 60)  # 20 минут при капче
+                    logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for 15 min (status {status})')
+                elif status == 404:
+                    logging.info(f'getResponse: Page {page} not found (404)')
+                    page_obj.close()
+                    context.close()
+                    return None
+                else:
+                    proxyDict[proxy] = time.time() + (1 * 60)  # 1 минута блокировки
+                
+                page_obj.close()
+                context.close()
+                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+            
+            # Успешный запрос
+            content = page_obj.content()
+            page_obj.close()
+            context.close()
+            
+            # Обновляем время блокировки прокси после успешного запроса
+            proxyDict[proxy] = time.time() + 28  # 28 секунд задержка между запросами
+            proxyErrorCount[proxy] = 0  # Сбрасываем счетчик ошибок
+            time.sleep(2)  # Небольшая задержка после успешного запроса
+            
+            logging.info(f'getResponse: Success, content length={len(content)}')
+            return content
+        else:
+            logging.error(f'getResponse: No response received')
+            page_obj.close()
+            context.close()
+            
+            if not respTry:
+                return None
+            
+            proxyDict[proxy] = time.time() + (1 * 60)
+            return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+            
+    except Exception as e:
+        logging.error(f'getResponse: Exception for proxy {proxy[:50] if proxy else "none"}...: {e}')
+        
+        if not respTry:
+            logging.warning(f'getResponse: No retries left after exception, returning None')
+            return None
+        
+        # Блокируем прокси при исключении
+        if proxy:
+            proxyDict[proxy] = time.time() + (1 * 60)
+            proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+        
+        return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
 def prePage(data, type=0):
     if type:
         # Для страницы объявления ищем "offerData"
@@ -199,8 +312,11 @@ def prePage(data, type=0):
 
 
 def listPages(page, sort=None, rooms=None):
+    logging.info(f"listPages: Starting for page={page}, sort={sort}, rooms={rooms}")
     pagesList = []
-    if not (response := getResponse(page, type=0, sort=sort, rooms=rooms)):
+    response = getResponse(page, type=0, sort=sort, rooms=rooms)
+    if not response:
+        logging.warning(f"listPages: getResponse returned None for page={page}, sort={sort}, rooms={rooms}")
         return []
     pageJS = prePage(response, type=0)
     page_obj = pageJS.get('page', pageJS)
