@@ -87,12 +87,13 @@ echo ""
 # Статус парсера
 echo "🔄 СТАТУС ПАРСЕРА:"
 echo "─────────────────────────────────────────────────────────────"
-if docker-compose -f docker-compose.prod.yml ps parser | grep -q "Up"; then
+COMPOSE_HTTP_TIMEOUT=10 docker-compose -f docker-compose.prod.yml ps parser 2>/dev/null | grep -q "Up"
+if [ $? -eq 0 ]; then
     echo "  ✓ Парсер работает"
-    uptime=$(docker-compose -f docker-compose.prod.yml ps parser | grep parser | awk '{print $4, $5, $6, $7}' || echo "неизвестно")
+    uptime=$(COMPOSE_HTTP_TIMEOUT=10 docker-compose -f docker-compose.prod.yml ps parser 2>/dev/null | grep parser | awk '{print $4, $5, $6, $7}' || echo "неизвестно")
     echo "  ⏱️  Время работы: $uptime"
 else
-    echo "  ❌ Парсер не работает!"
+    echo "  ❌ Парсер не работает или недоступен!"
 fi
 echo ""
 
