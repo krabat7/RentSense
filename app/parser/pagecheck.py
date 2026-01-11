@@ -54,6 +54,12 @@ def pagecheck(pageJS: dict):
     offers_details['flat_type'] = page.get('flatType')
     offers_details['is_duplicate'] = page.get('isDuplicate')
     offers_details['description'] = page.get('description')
+    
+    # Фильтруем только объявления об аренде (rent), пропускаем продажу (sale)
+    deal_type = offers_details.get('deal_type')
+    if deal_type and deal_type != 'rent':
+        logging.info(f"Filtering out offer {cianid}: deal_type={deal_type} (only rent allowed)")
+        return None
 
     realty_inside['rooms_count'] = page.get('roomsCount')
     realty_details['is_apartment'] = page.get('isApartments')

@@ -70,10 +70,10 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
     
     # Формируем URL и параметры запроса
     if type == 1:  # Страница объявления
-        url = f'{URL}/sale/flat/{page}/'
+        url = f'{URL}/rent/flat/{page}/'
     else:  # Список страниц (type=0)
         params = {
-            'deal_type': 'sale',
+            'deal_type': 'rent',
             'offer_type': 'flat',
             'p': page,
             'region': 1,
