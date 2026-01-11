@@ -16,7 +16,8 @@ echo ""
 
 echo "📊 СТАТИСТИКА ДОБАВЛЕННЫХ ОБЪЯВЛЕНИЙ (последние ${HOURS} часа):"
 echo "─────────────────────────────────────────────────────────────"
-added_count=$(docker-compose -f docker-compose.prod.yml logs --since ${HOURS}h parser 2>/dev/null | grep -c "is adding" 2>/dev/null || echo "0")
+added_count=$(docker-compose -f docker-compose.prod.yml logs --tail 5000 --since ${HOURS}h parser 2>/dev/null | grep -c "is adding" 2>/dev/null)
+added_count=${added_count:-0}
 echo "  ✓ Добавлено объявлений: $added_count"
 echo ""
 
