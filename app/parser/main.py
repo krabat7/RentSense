@@ -127,9 +127,9 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         start_time = time.time()
         # Для страниц объявлений используем больший таймаут и более мягкое условие загрузки
         if type == 1:  # Страница объявления
-            # Используем 'domcontentloaded' вместо 'networkidle' для быстрей загрузки
-            # и увеличиваем таймаут до 60 секунд
-            response = page_obj.goto(url, wait_until='domcontentloaded', timeout=60000)
+            # Используем 'load' вместо 'domcontentloaded' для более надежной загрузки
+            # и увеличиваем таймаут до 90 секунд (прокси могут быть медленными)
+            response = page_obj.goto(url, wait_until='load', timeout=90000)
         else:  # Список страниц
             response = page_obj.goto(url, wait_until='networkidle', timeout=30000)
         elapsed = time.time() - start_time
