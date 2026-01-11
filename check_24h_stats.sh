@@ -17,8 +17,8 @@ fi
 echo "📊 СТАТИСТИКА ИЗ ЛОГОВ (последние 24 часа):"
 echo "─────────────────────────────────────────────────────────────"
 
-added_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "Apart page.*is adding" 2>/dev/null || echo "0")
-updated_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "Apart page.*is updating" 2>/dev/null || echo "0")
+added_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "is adding" 2>/dev/null || echo "0")
+updated_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "is updating" 2>/dev/null || echo "0")
 photos_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "added.*photos" 2>/dev/null || echo "0")
 
 echo "  ✓ Добавлено новых объявлений: $added_24h"
@@ -72,7 +72,7 @@ echo ""
 # Последние добавленные объявления из логов
 echo "✅ ПОСЛЕДНИЕ 10 ДОБАВЛЕННЫХ ОБЪЯВЛЕНИЙ (24 часа):"
 echo "─────────────────────────────────────────────────────────────"
-docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep "Apart page.*is adding" | tail -10 | sed 's/^/  /' || echo "  Нет данных"
+docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep "is adding" | tail -10 | sed 's/^/  /' || echo "  Нет данных"
 echo ""
 
 # Ошибки и предупреждения
