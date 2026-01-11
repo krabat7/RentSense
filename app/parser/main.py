@@ -123,7 +123,13 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         page_obj = context.new_page()
         
         start_time = time.time()
-        response = page_obj.goto(url, wait_until='networkidle', timeout=30000)
+        # Для страниц объявлений используем больший таймаут и более мягкое условие загрузки
+        if type == 1:  # Страница объявления
+            # Используем 'domcontentloaded' вместо 'networkidle' для быстрей загрузки
+            # и увеличиваем таймаут до 60 секунд
+            response = page_obj.goto(url, wait_until='domcontentloaded', timeout=60000)
+        else:  # Список страниц
+            response = page_obj.goto(url, wait_until='networkidle', timeout=30000)
         elapsed = time.time() - start_time
         
         if response:
@@ -374,7 +380,7 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
             logging.info(f"Apart page {page} skipped after {retry_count} failed attempts")
             continue
         
-        if not (response := getResponse(page, type=1, dbinsert=dbinsert, respTry=3)):  # Уменьшено с 5 до 3 попыток
+        if not (response := getResponse(page, type=1, dbinsert=dbinsert, respTry=2)):  # Уменьшено до 2 попыток для быстрей обработки
             failed_pages[page] = retry_count + 1
             if retry_count + 1 < max_retries:
                 logging.info(f"Apart page {page} failed, will retry later (attempt {retry_count + 1}/{max_retries})")
