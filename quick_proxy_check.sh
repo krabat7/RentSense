@@ -45,12 +45,15 @@ if [ "$timeouts" -gt 0 ] 2>/dev/null || [ "$status403" -gt 0 ] 2>/dev/null; then
     echo ""
 fi
 
-# Статус контейнера
+# Статус контейнера (быстрая проверка через docker ps)
 echo "🔄 СТАТУС ПАРСЕРА:"
 echo "─────────────────────────────────────────────────────────────"
-COMPOSE_HTTP_TIMEOUT=5 docker-compose -f docker-compose.prod.yml ps parser 2>/dev/null | grep -q "Up"
-if [ $? -eq 0 ]; then
+if docker ps --format "{{.Names}}" 2>/dev/null | grep -q "rentsense_parser"; then
     echo "  ✓ Парсер работает"
+    uptime=$(docker ps --format "{{.Status}}" --filter "name=rentsense_parser" 2>/dev/null | head -1)
+    if [ -n "$uptime" ]; then
+        echo "  ⏱️  Статус: $uptime"
+    fi
 else
     echo "  ❌ Парсер не работает!"
 fi
