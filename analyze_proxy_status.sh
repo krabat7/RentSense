@@ -51,11 +51,12 @@ echo ""
 
 # Расчет процента успешности
 total_requests=$((status_200 + status_403 + status_407 + timeout_count))
+total_requests=${total_requests:-0}
 if [ "$total_requests" -gt 0 ] 2>/dev/null; then
     success_rate=$(awk "BEGIN {printf \"%.1f\", ($status_200 * 100) / $total_requests}" 2>/dev/null || echo "0")
     echo "  📈 Процент успешных запросов: ${success_rate}%"
 else
-    echo "  📈 Процент успешных запросов: нет данных"
+    echo "  📈 Процент успешных запросов: нет данных (всего запросов: $total_requests)"
 fi
 echo ""
 
