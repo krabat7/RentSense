@@ -18,14 +18,24 @@ echo ""
 echo "📊 БЫСТРАЯ СТАТИСТИКА (последние 1000 строк):"
 echo "─────────────────────────────────────────────────────────────"
 
+# Получаем время перезапуска (последний restart)
+restart_time=$(docker ps --format "{{.Status}}" --filter "name=rentsense_parser" 2>/dev/null | head -1 | grep -oP "Up \d+ \w+" || echo "")
+echo "  ⏱️  Время работы: $restart_time"
+
 added=$(docker-compose -f docker-compose.prod.yml logs --tail 1000 parser 2>/dev/null | grep -c "is adding" 2>/dev/null || echo "0")
 status200=$(docker-compose -f docker-compose.prod.yml logs --tail 1000 parser 2>/dev/null | grep -c "Status=200" 2>/dev/null || echo "0")
 timeouts=$(docker-compose -f docker-compose.prod.yml logs --tail 1000 parser 2>/dev/null | grep -c "Timeout.*exceeded" 2>/dev/null || echo "0")
 status403=$(docker-compose -f docker-compose.prod.yml logs --tail 1000 parser 2>/dev/null | grep -c "Status=403" 2>/dev/null || echo "0")
 
+# Проверяем последний таймаут (если есть)
+last_timeout=$(docker-compose -f docker-compose.prod.yml logs --tail 1000 parser 2>/dev/null | grep "Timeout.*exceeded" | tail -1 | cut -d'|' -f1 | xargs 2>/dev/null || echo "")
+
 echo "  ✓ Добавлено объявлений: $added"
 echo "  ✅ Успешных запросов (200): $status200"
 echo "  ⏱️  Таймаутов: $timeouts"
+if [ -n "$last_timeout" ]; then
+    echo "     └─ Последний таймаут: $last_timeout"
+fi
 echo "  🚫 Блокировок 403: $status403"
 echo ""
 
