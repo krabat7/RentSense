@@ -97,9 +97,27 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if user_agent:
                 context_options['user_agent'] = user_agent
         
-        # Устанавливаем прокси
+        # Устанавливаем прокси с правильной обработкой аутентификации
         if proxy:
-            context_options['proxy'] = {'server': proxy}
+            # Если прокси содержит аутентификацию (format: http://USER:PASS@IP:PORT)
+            if '@' in proxy:
+                from urllib.parse import urlparse
+                try:
+                    parsed = urlparse(proxy)
+                    proxy_server = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+                    context_options['proxy'] = {'server': proxy_server}
+                    # Добавляем аутентификацию
+                    if parsed.username and parsed.password:
+                        context_options['http_credentials'] = {
+                            'username': parsed.username,
+                            'password': parsed.password
+                        }
+                except Exception as e:
+                    logging.warning(f'Failed to parse proxy {proxy[:50]}...: {e}, using as-is')
+                    context_options['proxy'] = {'server': proxy}
+            else:
+                # Прокси без аутентификации
+                context_options['proxy'] = {'server': proxy}
         
         context = browser.new_context(**context_options)
         page_obj = context.new_page()
