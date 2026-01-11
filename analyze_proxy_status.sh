@@ -106,13 +106,15 @@ echo ""
 echo "🔄 ПРОВЕРКА БЛОКИРОВОК И ПАУЗ:"
 echo "─────────────────────────────────────────────────────────────"
 
-no_available=$(docker-compose -f docker-compose.prod.yml logs --since ${HOURS}h parser 2>/dev/null | grep -c "No available proxies" 2>/dev/null || echo "0")
-waiting_count=$(docker-compose -f docker-compose.prod.yml logs --since ${HOURS}h parser 2>/dev/null | grep -c "waiting.*seconds" 2>/dev/null || echo "0")
+no_available=$(docker-compose -f docker-compose.prod.yml logs --tail 5000 --since ${HOURS}h parser 2>/dev/null | grep -c "No available proxies" 2>/dev/null)
+waiting_count=$(docker-compose -f docker-compose.prod.yml logs --tail 5000 --since ${HOURS}h parser 2>/dev/null | grep -c "waiting.*seconds" 2>/dev/null)
+no_available=${no_available:-0}
+waiting_count=${waiting_count:-0}
 
 echo "  ⏸️  Пауз из-за отсутствия прокси: $no_available"
 echo "  ⏳ Ожиданий прокси: $waiting_count"
 
-if [ $waiting_count -gt 0 ]; then
+if [ "$waiting_count" -gt 0 ] 2>/dev/null; then
     echo ""
     echo "  ⏱️  Последние ожидания прокси:"
     docker-compose -f docker-compose.prod.yml logs --since ${HOURS}h parser 2>/dev/null | grep "waiting.*seconds" | tail -5 | sed 's/^/    /'
@@ -129,15 +131,15 @@ echo ""
 echo "💡 РЕКОМЕНДАЦИИ:"
 echo "─────────────────────────────────────────────────────────────"
 
-if [ $timeout_count -gt 10 ]; then
+if [ "$timeout_count" -gt 10 ] 2>/dev/null; then
     echo "  ⚠️  Много таймаутов - возможно, нужно увеличить таймаут или проверить прокси"
 fi
 
-if [ $status_403 -gt 20 ]; then
+if [ "$status_403" -gt 20 ] 2>/dev/null; then
     echo "  ⚠️  Много блокировок 403 - CIAN блокирует прокси, возможно нужно увеличить задержки"
 fi
 
-if [ $blocked_proxies -gt 50 ]; then
+if [ "$blocked_proxies" -gt 50 ] 2>/dev/null; then
     echo "  ⚠️  Много блокировок прокси - возможно, нужно увеличить время между запросами"
 fi
 
