@@ -17,9 +17,9 @@ fi
 echo "📊 СТАТИСТИКА ИЗ ЛОГОВ (последние 24 часа):"
 echo "─────────────────────────────────────────────────────────────"
 
-added_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "Apart page.*is adding" || echo "0")
-updated_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "Apart page.*is updating" || echo "0")
-photos_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "added.*photos" || echo "0")
+added_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "Apart page.*is adding" 2>/dev/null || echo "0")
+updated_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "Apart page.*is updating" 2>/dev/null || echo "0")
+photos_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -c "added.*photos" 2>/dev/null || echo "0")
 
 echo "  ✓ Добавлено новых объявлений: $added_24h"
 echo "  ✓ Обновлено существующих: $updated_24h"
@@ -78,8 +78,8 @@ echo ""
 # Ошибки и предупреждения
 echo "⚠️  ОШИБКИ И ПРЕДУПРЕЖДЕНИЯ (последние 24 часа):"
 echo "─────────────────────────────────────────────────────────────"
-errors_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -cE "(ERROR|error)" || echo "0")
-warnings_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -cE "(WARNING|warning)" || echo "0")
+errors_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -cE "(ERROR|error)" 2>/dev/null || echo "0")
+warnings_24h=$(docker-compose -f docker-compose.prod.yml logs --since 24h parser 2>/dev/null | grep -cE "(WARNING|warning)" 2>/dev/null || echo "0")
 echo "  ❌ Ошибок: $errors_24h"
 echo "  ⚠️  Предупреждений: $warnings_24h"
 echo ""

@@ -30,13 +30,26 @@ async def parsing(page=1):
         
         while errors < 20:  # Уменьшено с 30 до 20 для более быстрого пропуска проблем
             pglist = listPages(current_page, sort, room)
-            if pglist == 'END' or not pglist:
-                logging.info(f'End of pglist reached for room={room}, sort={sort}, page={current_page}')
+            
+            # 'END' означает, что страница не найдена или это конец списка
+            if pglist == 'END':
+                logging.info(f'End of pglist reached (END) for room={room}, sort={sort}, page={current_page}')
                 break
             
-            # Если список пустой, увеличиваем счетчик
-            if not pglist or len(pglist) == 0:
+            # None означает критическую ошибку (getResponse вернул None)
+            if pglist is None:
+                logging.warning(f'listPages returned None for room={room}, sort={sort}, page={current_page}')
+                errors += 1
+                if errors >= 20:
+                    logging.info(f'Error limit {errors} reached, stopping')
+                    break
+                current_page += 1
+                continue
+            
+            # Пустой список [] означает, что объявлений на странице нет (но страница существует)
+            if isinstance(pglist, list) and len(pglist) == 0:
                 consecutive_empty_pages += 1
+                logging.info(f'Empty page {current_page} for room={room}, sort={sort} (consecutive empty: {consecutive_empty_pages})')
                 if consecutive_empty_pages >= 3:  # Если 3 пустые страницы подряд - останавливаемся
                     logging.info(f'3 consecutive empty pages, stopping for room={room}, sort={sort}')
                     break
