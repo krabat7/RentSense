@@ -47,7 +47,9 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time()}
     
     if available_proxies:
-        proxy = min(available_proxies.items(), key=lambda x: x[1])[0]
+        # Улучшенная ротация: выбираем случайный из доступных прокси
+        # вместо самого "старого", чтобы лучше распределять нагрузку
+        proxy = random.choice(list(available_proxies.keys()))
     else:
         # Если все прокси заблокированы после ожидания, используем пустой прокси (без прокси)
         # или выбираем тот, который освободится раньше всех
@@ -147,11 +149,15 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 # Блокируем прокси при ошибках
                 if status in (403, 429):
-                    proxyDict[proxy] = time.time() + (15 * 60)  # 15 минут блокировки
+                    # Уменьшено время блокировки с 15 до 10 минут для быстрей восстановления
+                    block_time = 10 * 60  # 10 минут блокировки
+                    proxyDict[proxy] = time.time() + block_time
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
-                        proxyBlockedTime[proxy] = time.time() + (20 * 60)  # 20 минут при капче
-                    logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for 15 min (status {status})')
+                        proxyBlockedTime[proxy] = time.time()
+                        block_time = 15 * 60  # 15 минут при повторных ошибках
+                        proxyDict[proxy] = time.time() + block_time
+                    logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
                 elif status == 404:
                     logging.info(f'getResponse: Page {page} not found (404)')
                     page_obj.close()
@@ -170,9 +176,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             context.close()
             
             # Обновляем время блокировки прокси после успешного запроса
-            proxyDict[proxy] = time.time() + 28  # 28 секунд задержка между запросами
+            # Оптимизировано: 25 секунд вместо 28 + убрали sleep(2) для лучшей производительности
+            # При этом сохраняем защиту от блокировок
+            proxyDict[proxy] = time.time() + 25  # 25 секунд задержка между запросами
             proxyErrorCount[proxy] = 0  # Сбрасываем счетчик ошибок
-            time.sleep(2)  # Небольшая задержка после успешного запроса
+            time.sleep(1)  # Уменьшено с 2 до 1 секунды для ускорения
             
             logging.info(f'getResponse: Success, content length={len(content)}')
             return content
