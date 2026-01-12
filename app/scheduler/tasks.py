@@ -77,11 +77,11 @@ async def parsing(page=1):
             
             current_page += 1
             
-            # Ограничение на максимальное количество страниц за один запуск
-            # Уменьшено с 50 до 30 для более быстрого перехода к новым объявлениям
-            if current_page > start_page + 30:
-                logging.info(f'Reached page limit (30 pages) for room={room}, sort={sort}')
-                break
+            # Лимит на страницы убран - парсим до конца списка
+            # Остановка происходит только при:
+            # 1. Достижении конца списка ('END')
+            # 2. 3 пустых страницах подряд
+            # 3. 20 ошибках подряд
         
         logging.info(f'Finished: room={room}, sort={sort}, pages={current_page - start_page}, new={new_offers_count}, existing={existing_offers_count}')
 
