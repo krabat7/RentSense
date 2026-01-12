@@ -290,10 +290,24 @@ def prePage(data, type=0):
             # Сначала проверяем, есть ли вообще "pageNumber" и "products" в HTML
             has_pageNumber = '"pageNumber"' in data
             has_products = '"products"' in data
-            logging.info(f"HTML check: pageNumber={has_pageNumber}, products={has_products}")
+            logging.info(f"HTML check: pageNumber={has_pageNumber}, products={has_products}, HTML length={len(data)}")
             
             if not has_pageNumber or not has_products:
                 logging.warning(f"Missing required fields: pageNumber={has_pageNumber}, products={has_products}")
+                # Сохраняем часть HTML для анализа (первые 2000 символов и последние 2000)
+                preview_start = data[:2000] if len(data) > 2000 else data
+                preview_end = data[-2000:] if len(data) > 2000 else ""
+                logging.warning(f"HTML preview (first 2000 chars): {preview_start}")
+                if preview_end:
+                    logging.warning(f"HTML preview (last 2000 chars): {preview_end}")
+                
+                # Проверяем, не блокировка ли это (капча, 403 и т.д.)
+                if 'captcha' in data.lower() or 'капча' in data.lower():
+                    logging.error("CAPTCHA detected in response!")
+                if 'blocked' in data.lower() or 'заблокирован' in data.lower():
+                    logging.error("Blocked response detected!")
+                if 'access denied' in data.lower() or 'доступ запрещен' in data.lower():
+                    logging.error("Access denied in response!")
             
             # Ищем позицию, где есть и "pageNumber", и "products" рядом
             # Сначала находим все вхождения "pageNumber"
@@ -383,8 +397,6 @@ def prePage(data, type=0):
                                     continue
                     
                     logging.info(f"Match {idx+1}: Could not find object containing both pageNumber and products")
-                    if not found_start:
-                        logging.info(f"Match {idx+1}: Could not find object start")
             
             logging.info("Object with both pageNumber and products not found in HTML")
         except re.error as e:
