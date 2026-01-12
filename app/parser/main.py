@@ -15,9 +15,21 @@ _browser = None
 
 def _get_browser():
     global _playwright, _browser
-    if _browser is None:
+    if _browser is None or not _browser.is_connected():
+        # Если браузер закрыт или не подключен, пересоздаем его
+        if _browser:
+            try:
+                _browser.close()
+            except:
+                pass
+        if _playwright:
+            try:
+                _playwright.stop()
+            except:
+                pass
         _playwright = sync_playwright().start()
         _browser = _playwright.chromium.launch(headless=True)
+        logging.info('Browser recreated')
     return _browser
 
 def close_browser():
@@ -121,18 +133,34 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 # Прокси без аутентификации
                 context_options['proxy'] = {'server': proxy}
         
-        context = browser.new_context(**context_options)
-        page_obj = context.new_page()
-        
-        start_time = time.time()
-        # Для страниц объявлений используем больший таймаут и более мягкое условие загрузки
-        if type == 1:  # Страница объявления
-            # Используем 'load' вместо 'domcontentloaded' для более надежной загрузки
-            # и увеличиваем таймаут до 90 секунд (прокси могут быть медленными)
-            response = page_obj.goto(url, wait_until='load', timeout=90000)
-        else:  # Список страниц
-            response = page_obj.goto(url, wait_until='networkidle', timeout=30000)
-        elapsed = time.time() - start_time
+        context = None
+        page_obj = None
+        try:
+            context = browser.new_context(**context_options)
+            page_obj = context.new_page()
+            
+            start_time = time.time()
+            # Для страниц объявлений используем больший таймаут и более мягкое условие загрузки
+            if type == 1:  # Страница объявления
+                # Используем 'load' вместо 'domcontentloaded' для более надежной загрузки
+                # и увеличиваем таймаут до 90 секунд (прокси могут быть медленными)
+                response = page_obj.goto(url, wait_until='load', timeout=90000)
+            else:  # Список страниц
+                response = page_obj.goto(url, wait_until='networkidle', timeout=30000)
+            elapsed = time.time() - start_time
+        except Exception as e:
+            # Закрываем контекст и страницу при ошибке создания
+            if page_obj:
+                try:
+                    page_obj.close()
+                except:
+                    pass
+            if context:
+                try:
+                    context.close()
+                except:
+                    pass
+            raise  # Пробрасываем исключение дальше для обработки в основном блоке except
         
         if response:
             status = response.status
@@ -140,8 +168,17 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             
             if status != 200:
                 logging.error(f'getResponse: Page {page} | Retry: {respTry} | Status: {status}')
-                page_obj.close()
-                context.close()
+                # Безопасное закрытие
+                try:
+                    if page_obj:
+                        page_obj.close()
+                except:
+                    pass
+                try:
+                    if context:
+                        context.close()
+                except:
+                    pass
                 
                 if not respTry:
                     logging.warning(f'getResponse: No retries left, returning None')
@@ -160,20 +197,25 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                     logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
                 elif status == 404:
                     logging.info(f'getResponse: Page {page} not found (404)')
-                    page_obj.close()
-                    context.close()
                     return None
                 else:
                     proxyDict[proxy] = time.time() + (1 * 60)  # 1 минута блокировки
                 
-                page_obj.close()
-                context.close()
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
             
             # Успешный запрос
             content = page_obj.content()
-            page_obj.close()
-            context.close()
+            # Безопасное закрытие
+            try:
+                if page_obj:
+                    page_obj.close()
+            except:
+                pass
+            try:
+                if context:
+                    context.close()
+            except:
+                pass
             
             # Обновляем время блокировки прокси после успешного запроса
             # Оптимизировано: 25 секунд вместо 28 + убрали sleep(2) для лучшей производительности
@@ -186,8 +228,17 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             return content
         else:
             logging.error(f'getResponse: No response received')
-            page_obj.close()
-            context.close()
+            # Безопасное закрытие
+            try:
+                if page_obj:
+                    page_obj.close()
+            except:
+                pass
+            try:
+                if context:
+                    context.close()
+            except:
+                pass
             
             if not respTry:
                 return None
@@ -196,7 +247,20 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
             
     except Exception as e:
+        error_msg = str(e)
         logging.error(f'getResponse: Exception for proxy {proxy[:50] if proxy else "none"}...: {e}')
+        
+        # Если браузер закрыт, пересоздаем его
+        if 'closed' in error_msg.lower() or 'has been closed' in error_msg.lower():
+            logging.warning('Browser/context/page was closed, recreating browser')
+            try:
+                close_browser()
+            except:
+                pass
+            # Принудительно сбрасываем браузер
+            global _browser, _playwright
+            _browser = None
+            _playwright = None
         
         if not respTry:
             logging.warning(f'getResponse: No retries left after exception, returning None')
