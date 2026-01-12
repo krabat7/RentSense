@@ -1,11 +1,16 @@
 import asyncio
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from app.parser.main import apartPage, listPages
 
 # Используем ThreadPoolExecutor с одним воркером для изоляции синхронного Playwright кода
 # Playwright sync API не может работать в разных потоках одновременно
 executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="parser_thread")
+
+# Максимальное время выполнения парсинга (в секундах)
+# Если парсинг займет больше этого времени, он будет прерван
+MAX_PARSING_TIME = 7200  # 2 часа (совпадает с MAX_CYCLE_TIME в crontab.py)
 
 
 async def parsing(page=1):
@@ -91,11 +96,21 @@ async def parsing(page=1):
         Всегда начинаем с первой страницы для поиска новых объявлений.
         Прокси будут использоваться автоматически с улучшенной логикой выбора.
         """
+        start_time = time.time()
         for room in rooms:
             for sort in sorts:
-                logging.info(f'Starting parsing: room={room or "all"}, sort={sort or "default"}, page=1')
+                # Проверяем, не превысили ли мы максимальное время
+                elapsed = time.time() - start_time
+                if elapsed > MAX_PARSING_TIME:
+                    logging.warning(f'Превышено максимальное время парсинга ({MAX_PARSING_TIME // 60} минут), прерываем цикл')
+                    return
+                
+                logging.info(f'Starting parsing: room={room or "all"}, sort={sort or "default"}, page=1 (elapsed: {elapsed:.1f}s)')
                 process_page(1, sort, room)  # Всегда начинаем с первой страницы
                 logging.info(f'Finished: room={room or "all"}, sort={sort or "default"}')
+        
+        total_time = time.time() - start_time
+        logging.info(f'Все комбинации обработаны за {total_time:.1f} секунд ({total_time / 60:.1f} минут)')
 
     # Используем executor для изоляции синхронного Playwright кода
     # Обрабатываем последовательно, но прокси будут использоваться эффективно
