@@ -1,3 +1,5 @@
+import logging
+
 def pagecheck(pageJS: dict):
     data: dict = {}
     if not pageJS.get('offer'):
@@ -59,6 +61,12 @@ def pagecheck(pageJS: dict):
     deal_type = offers_details.get('deal_type')
     if deal_type and deal_type != 'rent':
         logging.info(f"Filtering out offer {cianid}: deal_type={deal_type} (only rent allowed)")
+        return None
+    
+    # Фильтруем посуточную аренду (dailyFlatRent), оставляем только долгосрочную аренду
+    category = offers.get('category')
+    if category == 'dailyFlatRent':
+        logging.info(f"Filtering out offer {cianid}: category={category} (only long-term rent allowed, no daily rent)")
         return None
 
     realty_inside['rooms_count'] = page.get('roomsCount')
