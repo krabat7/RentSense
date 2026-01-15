@@ -78,22 +78,32 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         # вместо самого "старого", чтобы лучше распределять нагрузку
         proxy = random.choice(list(available_proxies.keys()))
     else:
-        # Если все прокси заблокированы после ожидания, используем пустой прокси (без прокси)
-        # или выбираем тот, который освободится раньше всех
-        if len(proxyDict) > 1:  # Есть прокси в словаре
+        # Если все прокси заблокированы после ожидания
+        # НЕ используем пустой прокси - он всегда дает 403, это бессмысленно
+        non_empty_proxies = {k: v for k, v in proxyDict.items() if k != ''}
+        if non_empty_proxies:
             # Выбираем прокси с наименьшим временем блокировки (освободится раньше всех)
-            earliest_proxy = min(proxyDict.items(), key=lambda x: x[1])
-            if earliest_proxy[1] <= time.time() + 300:  # Если освободится в течение 5 минут
+            earliest_proxy = min(non_empty_proxies.items(), key=lambda x: x[1])
+            unlock_time = earliest_proxy[1] - time.time()
+            if unlock_time <= 300:  # Если освободится в течение 5 минут
                 proxy = earliest_proxy[0]
-                logging.warning(f'All proxies blocked, using earliest available: {proxy[:30]}... (unlocks in {earliest_proxy[1] - time.time():.0f}s)')
+                logging.warning(f'All proxies blocked, using earliest available: {proxy[:30]}... (unlocks in {unlock_time:.0f}s)')
             else:
-                # Если все прокси заблокированы надолго, используем пустой прокси
-                proxy = ''
-                logging.warning('All proxies blocked for >5 minutes, using no proxy')
+                # Если все прокси заблокированы надолго (>5 минут), возвращаем None
+                # чтобы не тратить время на бессмысленные попытки
+                if respTry <= 1:
+                    logging.warning(f'All proxies blocked for >5 minutes, no retries left, returning None')
+                    return None
+                # Если есть попытки, ждем еще немного
+                wait_time = min(unlock_time, 60)
+                logging.warning(f'All proxies blocked for >5 minutes, waiting {wait_time:.0f}s before retry')
+                time.sleep(wait_time)
+                # Рекурсивно вызываем с уменьшенным количеством попыток
+                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
         else:
-            # Нет прокси в словаре, используем пустой
-            proxy = ''
-            logging.warning('No proxies configured, using no proxy')
+            # Нет прокси в словаре вообще - это ошибка конфигурации
+            logging.error('No proxies configured in proxyDict')
+            return None
     
     # Формируем URL и параметры запроса
     if type == 1:  # Страница объявления
