@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import time
+from pathlib import Path
 from dotenv import dotenv_values
 
 def recjson(regex, data, ident=None):
@@ -38,12 +39,17 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(logging.Formatter(formatter, datefmt))
 logging.getLogger().addHandler(console_handler)
 
-env = dotenv_values()
+# Загружаем .env из корня проекта
+env_path = Path(__file__).parent.parent.parent / '.env'
+env = dotenv_values(env_path)
 proxyDict = {
     proxy: 0.0
     for proxy in (env.get(f'PROXY{i}') for i in range(1, 26)) if proxy  # Поддержка до PROXY25
 }
 proxyDict[''] = 0.0
+
+# Логируем количество загруженных прокси
+logging.info(f'Loaded {len([p for p in proxyDict.keys() if p != ""])} proxies from .env file')
 
 # Словарь для отслеживания времени последней блокировки прокси
 # Используется для разморозки заблокированных прокси
