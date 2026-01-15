@@ -52,11 +52,13 @@ async def parsing(page=1):
                 continue
             
             # Пустой список [] означает, что объявлений на странице нет (но страница существует)
+            # Это может быть из-за CAPTCHA или действительно пустых страниц
             if isinstance(pglist, list) and len(pglist) == 0:
                 consecutive_empty_pages += 1
                 logging.info(f'Empty page {current_page} for room={room}, sort={sort} (consecutive empty: {consecutive_empty_pages})')
-                if consecutive_empty_pages >= 10:  # Увеличено с 3 до 10 - больше пустых страниц перед остановкой
-                    logging.info(f'10 consecutive empty pages, stopping for room={room}, sort={sort}')
+                # Если много пустых страниц подряд (вероятно все CAPTCHA), пропускаем комбинацию быстрее
+                if consecutive_empty_pages >= 5:  # Уменьшено с 10 до 5 - быстрее пропускаем проблемные комбинации
+                    logging.info(f'{consecutive_empty_pages} consecutive empty pages (likely all CAPTCHA), stopping for room={room}, sort={sort}')
                     break
                 current_page += 1
                 continue

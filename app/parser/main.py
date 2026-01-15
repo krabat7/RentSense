@@ -78,7 +78,8 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             misstime = min(mintime - timenow, 60)  # Максимум 60 секунд
             logging.info(f'No available proxies, waiting {misstime:.2f} seconds')
             time.sleep(misstime)
-            available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time()}
+            # Исключаем пустой прокси при пересчете
+            available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
     
     if available_proxies:
         # Улучшенная ротация: выбираем случайный из доступных прокси
