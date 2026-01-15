@@ -217,6 +217,18 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             except:
                 pass
             
+            # Проверяем на CAPTCHA в содержимом (до парсинга)
+            if content and ('captcha' in content.lower() or 'капча' in content.lower() or 'recaptcha' in content.lower()):
+                logging.error("CAPTCHA detected in response content!")
+                if proxy:
+                    logging.warning(f"Blocking proxy {proxy[:50]}... for 30 minutes due to CAPTCHA")
+                    proxyDict[proxy] = time.time() + (30 * 60)  # 30 минут блокировки
+                    proxyBlockedTime[proxy] = time.time()
+                    proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                if not respTry:
+                    return 'CAPTCHA'
+                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+            
             # Обновляем время блокировки прокси после успешного запроса
             # Оптимизировано: 25 секунд вместо 28 + убрали sleep(2) для лучшей производительности
             # При этом сохраняем защиту от блокировок
@@ -302,12 +314,22 @@ def prePage(data, type=0):
                     logging.warning(f"HTML preview (last 2000 chars): {preview_end}")
                 
                 # Проверяем, не блокировка ли это (капча, 403 и т.д.)
-                if 'captcha' in data.lower() or 'капча' in data.lower():
+                captcha_detected = False
+                if 'captcha' in data.lower() or 'капча' in data.lower() or 'recaptcha' in data.lower():
                     logging.error("CAPTCHA detected in response!")
+                    captcha_detected = True
                 if 'blocked' in data.lower() or 'заблокирован' in data.lower():
                     logging.error("Blocked response detected!")
                 if 'access denied' in data.lower() or 'доступ запрещен' in data.lower():
                     logging.error("Access denied in response!")
+                
+                # Если обнаружена CAPTCHA, блокируем прокси на 30 минут и возвращаем специальное значение
+                if captcha_detected and proxy:
+                    logging.warning(f"Blocking proxy {proxy[:50]}... for 30 minutes due to CAPTCHA")
+                    proxyDict[proxy] = time.time() + (30 * 60)  # 30 минут блокировки
+                    proxyBlockedTime[proxy] = time.time()
+                    proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                    return 'CAPTCHA'
             
             # Ищем позицию, где есть и "pageNumber", и "products" рядом
             # Сначала находим все вхождения "pageNumber"
@@ -423,10 +445,22 @@ def listPages(page, sort=None, rooms=None):
     logging.info(f"listPages: Starting for page={page}, sort={sort}, rooms={rooms}")
     pagesList = []
     response = getResponse(page, type=0, sort=sort, rooms=rooms)
+    
+    # Обработка CAPTCHA - пропускаем страницу и возвращаем пустой список
+    # чтобы парсер мог продолжить со следующей страницы
+    if response == 'CAPTCHA':
+        logging.warning(f"listPages: CAPTCHA detected for page={page}, sort={sort}, rooms={rooms}, skipping page")
+        return []  # Возвращаем пустой список, чтобы парсер продолжил
+    
     if not response:
         logging.warning(f"listPages: getResponse returned None for page={page}, sort={sort}, rooms={rooms}")
         return []
+    
     pageJS = prePage(response, type=0)
+    if not pageJS:
+        logging.warning(f"listPages: prePage returned None for page={page}, sort={sort}, rooms={rooms}")
+        return []
+    
     page_obj = pageJS.get('page', pageJS)
     if page_obj.get('pageNumber') != page:
         logging.info(f"Prewiew page {page} is END")
@@ -467,7 +501,15 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
             logging.info(f"Apart page {page} skipped after {retry_count} failed attempts")
             continue
         
-        if not (response := getResponse(page, type=1, dbinsert=dbinsert, respTry=2)):  # Уменьшено до 2 попыток для быстрей обработки
+        response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2)  # Уменьшено до 2 попыток для быстрей обработки
+        
+        # Обработка CAPTCHA - пропускаем объявление
+        if response == 'CAPTCHA':
+            logging.warning(f"Apart page {page}: CAPTCHA detected, skipping")
+            filtered_count += 1  # Считаем как отфильтрованное
+            continue
+        
+        if not response:
             failed_pages[page] = retry_count + 1
             if retry_count + 1 < max_retries:
                 logging.info(f"Apart page {page} failed, will retry later (attempt {retry_count + 1}/{max_retries})")
