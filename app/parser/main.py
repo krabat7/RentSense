@@ -49,7 +49,22 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
     
     available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time()}
     
-    if len(available_proxies) < 1:  # Уменьшено с 2 до 1
+    # Проверяем, не заблокированы ли все прокси CAPTCHA (блокировка > 10 минут)
+    # Если да, сразу возвращаем CAPTCHA, чтобы не тратить время
+    if len(available_proxies) < 1:
+        # Проверяем минимальное время блокировки
+        non_empty_proxies = {k: v for k, v in proxyDict.items() if k != ''}
+        if non_empty_proxies:
+            mintime = min(non_empty_proxies.values())
+            current_time = time.time()
+            if mintime > current_time:
+                block_duration = mintime - current_time
+                # Если все прокси заблокированы более чем на 10 минут, вероятно это CAPTCHA
+                # Пропускаем страницу сразу, чтобы не тратить время
+                if block_duration > (10 * 60) and respTry <= 2:
+                    logging.warning(f'All proxies blocked for {block_duration/60:.1f} minutes (likely CAPTCHA), skipping page {page}')
+                    return 'CAPTCHA'
+        
         count = min(len(proxyDict) - 1, 1)
         mintime = sorted(proxyDict.values())[count]
         if (mintime > (timenow := time.time())):
@@ -230,11 +245,10 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
             
             # Обновляем время блокировки прокси после успешного запроса
-            # Оптимизировано: 25 секунд вместо 28 + убрали sleep(2) для лучшей производительности
-            # При этом сохраняем защиту от блокировок
-            proxyDict[proxy] = time.time() + 25  # 25 секунд задержка между запросами
+            # Увеличено до 30 секунд для снижения вероятности CAPTCHA
+            proxyDict[proxy] = time.time() + 30  # 30 секунд задержка между запросами
             proxyErrorCount[proxy] = 0  # Сбрасываем счетчик ошибок
-            time.sleep(1)  # Уменьшено с 2 до 1 секунды для ускорения
+            time.sleep(2)  # Увеличено до 2 секунд для снижения вероятности CAPTCHA
             
             logging.info(f'getResponse: Success, content length={len(content)}')
             return content
