@@ -251,6 +251,15 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                     proxyDict[proxy] = time.time() + (30 * 60)  # 30 минут блокировки
                     proxyBlockedTime[proxy] = time.time()
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                
+                # Если осталось мало попыток и все прокси заблокированы, сразу возвращаем CAPTCHA
+                if respTry <= 2:
+                    # Проверяем, сколько прокси доступно
+                    available_after_captcha = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
+                    if len(available_after_captcha) == 0:
+                        logging.warning(f'All proxies blocked after CAPTCHA, skipping page {page}')
+                        return 'CAPTCHA'
+                
                 if not respTry:
                     return 'CAPTCHA'
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
