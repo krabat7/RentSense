@@ -41,11 +41,17 @@ def close_browser():
         _playwright.stop()
         _playwright = None
 
+# Глобальный счетчик CAPTCHA для отслеживания подряд идущих CAPTCHA
+_captcha_count = {}  # {page: count}
+
 def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
+    global _captcha_count
     logging.info(f'getResponse: Starting for page={page}, type={type}, respTry={respTry}, sort={sort}, rooms={rooms}')
     
     if respTry == 5:
         check_and_unfreeze_proxies()
+        # Сбрасываем счетчик CAPTCHA для новой страницы
+        _captcha_count[page] = 0
     
     # Исключаем пустой прокси из доступных - он всегда дает 403
     available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
@@ -252,6 +258,14 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                     proxyBlockedTime[proxy] = time.time()
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                 
+                # Увеличиваем счетчик CAPTCHA для этой страницы
+                _captcha_count[page] = _captcha_count.get(page, 0) + 1
+                
+                # Если 2 или более прокси подряд получили CAPTCHA, сразу пропускаем страницу
+                if _captcha_count[page] >= 2:
+                    logging.warning(f'{_captcha_count[page]} CAPTCHA in a row for page {page}, skipping immediately')
+                    return 'CAPTCHA'
+                
                 # Если осталось мало попыток и все прокси заблокированы, сразу возвращаем CAPTCHA
                 if respTry <= 2:
                     # Проверяем, сколько прокси доступно
@@ -269,6 +283,9 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             # Если используются разные прокси, пауза не нужна - каждый запрос идет с нового IP
             proxyDict[proxy] = time.time() + 30  # 30 секунд блокировки прокси
             proxyErrorCount[proxy] = 0  # Сбрасываем счетчик ошибок
+            # Сбрасываем счетчик CAPTCHA при успешном запросе
+            if page in _captcha_count:
+                _captcha_count[page] = 0
             # Убрали sleep - при использовании разных прокси пауза не нужна
             
             logging.info(f'getResponse: Success, content length={len(content)}')
