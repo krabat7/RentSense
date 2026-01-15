@@ -245,10 +245,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
             
             # Обновляем время блокировки прокси после успешного запроса
-            # Увеличено до 30 секунд для снижения вероятности CAPTCHA
-            proxyDict[proxy] = time.time() + 30  # 30 секунд задержка между запросами
+            # Блокируем прокси на 30 секунд, чтобы не использовать тот же прокси повторно
+            # Если используются разные прокси, пауза не нужна - каждый запрос идет с нового IP
+            proxyDict[proxy] = time.time() + 30  # 30 секунд блокировки прокси
             proxyErrorCount[proxy] = 0  # Сбрасываем счетчик ошибок
-            time.sleep(2)  # Увеличено до 2 секунд для снижения вероятности CAPTCHA
+            # Убрали sleep - при использовании разных прокси пауза не нужна
             
             logging.info(f'getResponse: Success, content length={len(content)}')
             return content
