@@ -111,6 +111,8 @@ async def parsing(page=1):
         Прокси будут использоваться автоматически с улучшенной логикой выбора.
         """
         start_time = time.time()
+        skipped_combinations = 0  # Счетчик пропущенных комбинаций из-за CAPTCHA
+        
         for room in rooms:
             for sort in sorts:
                 # Проверяем, не превысили ли мы максимальное время
@@ -119,9 +121,28 @@ async def parsing(page=1):
                     logging.warning(f'Превышено максимальное время парсинга ({MAX_PARSING_TIME // 60} минут), прерываем цикл')
                     return
                 
+                # Проверяем, не заблокированы ли все прокси CAPTCHA перед началом комбинации
+                from app.parser.tools import proxyDict
+                non_empty_proxies = {k: v for k, v in proxyDict.items() if k != ''}
+                if non_empty_proxies:
+                    current_time = time.time()
+                    all_blocked = all(v > current_time + 60 for v in non_empty_proxies.values())  # Все заблокированы >1 минуты
+                    if all_blocked:
+                        min_unlock = min(v for v in non_empty_proxies.values())
+                        unlock_time = min_unlock - current_time
+                        logging.warning(f'All proxies blocked for {unlock_time/60:.1f} minutes, skipping combination room={room or "all"}, sort={sort or "default"}')
+                        skipped_combinations += 1
+                        # Если все комбинации пропущены, делаем паузу
+                        if skipped_combinations >= len(rooms) * len(sorts) - 1:
+                            logging.warning(f'All combinations skipped due to blocked proxies, waiting 5 minutes before next cycle')
+                            time.sleep(300)  # 5 минут пауза
+                            skipped_combinations = 0
+                        continue
+                
                 logging.info(f'Starting parsing: room={room or "all"}, sort={sort or "default"}, page=1 (elapsed: {elapsed:.1f}s)')
                 process_page(1, sort, room)  # Всегда начинаем с первой страницы
                 logging.info(f'Finished: room={room or "all"}, sort={sort or "default"}')
+                skipped_combinations = 0  # Сбрасываем счетчик при успешной комбинации
         
         total_time = time.time() - start_time
         logging.info(f'Все комбинации обработаны за {total_time:.1f} секунд ({total_time / 60:.1f} минут)')
