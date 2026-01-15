@@ -448,12 +448,15 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
     """
     pages_cnt = 0
     skipped_count = 0
+    existing_count = 0
+    filtered_count = 0
     failed_pages = {}  # Счетчик неудачных попыток для каждого объявления
     
     for page in pagesList:
         exist = False
         if dbinsert and DB.select(model_classes['offers'], filter_by={'cian_id': page}):
             exist = True
+            existing_count += 1
             logging.info(f"Apart page {page} already exists")
             continue
         
@@ -477,6 +480,8 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
             if not dbinsert:
                 return data
             if exist:
+                # Это не должно произойти, т.к. exist проверяется выше
+                existing_count += 1
                 instances = [(model, data[key])
                              for key, model in model_classes.items() if key in data]
                 for model, update_values in instances:
@@ -520,14 +525,16 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
             if page in failed_pages:
                 del failed_pages[page]
         else:
+            # pagecheck вернул None - объявление отфильтровано (deal_type != 'rent' или category == 'dailyFlatRent')
+            filtered_count += 1
             failed_pages[page] = retry_count + 1
             if retry_count + 1 < max_retries:
                 logging.info(f"Apart page {page} parse failed, will retry later (attempt {retry_count + 1}/{max_retries})")
         continue
     
-    logging.info(f"Apart pages {pagesList} is END. Added: {pages_cnt}, Skipped: {skipped_count}")
-    if not pages_cnt:
-        return
+    logging.info(f"Apart pages {pagesList[:5]}{'...' if len(pagesList) > 5 else ''} processed. Added: {pages_cnt}, Existing: {existing_count}, Filtered: {filtered_count}, Skipped: {skipped_count}")
+    # Возвращаем 'OK' даже если pages_cnt == 0, чтобы показать, что страница была обработана
+    # Это важно для различения пустых страниц и страниц, где все объявления уже в базе/отфильтрованы
     return 'OK'
 
 
