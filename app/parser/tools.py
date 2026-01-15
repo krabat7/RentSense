@@ -41,7 +41,7 @@ logging.getLogger().addHandler(console_handler)
 env = dotenv_values()
 proxyDict = {
     proxy: 0.0
-    for proxy in (env.get(f'PROXY{i}') for i in range(1, 15)) if proxy  # Поддержка до PROXY14
+    for proxy in (env.get(f'PROXY{i}') for i in range(1, 20)) if proxy  # Поддержка до PROXY19
 }
 proxyDict[''] = 0.0
 
