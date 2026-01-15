@@ -47,7 +47,8 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
     if respTry == 5:
         check_and_unfreeze_proxies()
     
-    available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time()}
+    # Исключаем пустой прокси из доступных - он всегда дает 403
+    available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
     
     # Проверяем, не заблокированы ли все прокси CAPTCHA (блокировка > 10 минут)
     # Если да, сразу возвращаем CAPTCHA, чтобы не тратить время
@@ -59,9 +60,9 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             current_time = time.time()
             if mintime > current_time:
                 block_duration = mintime - current_time
-                # Если все прокси заблокированы более чем на 10 минут, вероятно это CAPTCHA
-                # Пропускаем страницу сразу, чтобы не тратить время
-                if block_duration > (10 * 60) and respTry <= 2:
+                # Если все прокси заблокированы более чем на 5 минут, вероятно это CAPTCHA
+                # Пропускаем страницу сразу, чтобы не тратить время (уменьшено с 10 до 5 минут)
+                if block_duration > (5 * 60) and respTry <= 2:
                     logging.warning(f'All proxies blocked for {block_duration/60:.1f} minutes (likely CAPTCHA), skipping page {page}')
                     return 'CAPTCHA'
         
