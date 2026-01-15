@@ -56,9 +56,9 @@ async def parsing(page=1):
             if isinstance(pglist, list) and len(pglist) == 0:
                 consecutive_empty_pages += 1
                 logging.info(f'Empty page {current_page} for room={room}, sort={sort} (consecutive empty: {consecutive_empty_pages})')
-                # Если много пустых страниц подряд (вероятно все CAPTCHA), пропускаем комбинацию быстрее
-                if consecutive_empty_pages >= 5:  # Уменьшено с 10 до 5 - быстрее пропускаем проблемные комбинации
-                    logging.info(f'{consecutive_empty_pages} consecutive empty pages (likely all CAPTCHA), stopping for room={room}, sort={sort}')
+                # Если много пустых страниц подряд, пропускаем комбинацию
+                if consecutive_empty_pages >= 10:  # Возвращено к 10 - работало раньше
+                    logging.info(f'{consecutive_empty_pages} consecutive empty pages, stopping for room={room}, sort={sort}')
                     break
                 current_page += 1
                 continue
@@ -122,20 +122,21 @@ async def parsing(page=1):
                     return
                 
                 # Проверяем, не заблокированы ли все прокси CAPTCHA перед началом комбинации
+                # Пропускаем только если все прокси заблокированы более чем на 5 минут
                 from app.parser.tools import proxyDict
                 non_empty_proxies = {k: v for k, v in proxyDict.items() if k != ''}
                 if non_empty_proxies:
                     current_time = time.time()
-                    all_blocked = all(v > current_time + 60 for v in non_empty_proxies.values())  # Все заблокированы >1 минуты
+                    all_blocked = all(v > current_time + (5 * 60) for v in non_empty_proxies.values())  # Все заблокированы >5 минут
                     if all_blocked:
                         min_unlock = min(v for v in non_empty_proxies.values())
                         unlock_time = min_unlock - current_time
                         logging.warning(f'All proxies blocked for {unlock_time/60:.1f} minutes, skipping combination room={room or "all"}, sort={sort or "default"}')
                         skipped_combinations += 1
-                        # Если все комбинации пропущены, делаем паузу
+                        # Если все комбинации пропущены, делаем короткую паузу
                         if skipped_combinations >= len(rooms) * len(sorts) - 1:
-                            logging.warning(f'All combinations skipped due to blocked proxies, waiting 5 minutes before next cycle')
-                            time.sleep(300)  # 5 минут пауза
+                            logging.warning(f'All combinations skipped due to blocked proxies, waiting 1 minute before next cycle')
+                            time.sleep(60)  # 1 минута пауза (уменьшено с 5 минут)
                             skipped_combinations = 0
                         continue
                 
