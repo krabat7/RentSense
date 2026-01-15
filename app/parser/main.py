@@ -92,20 +92,20 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             # Выбираем прокси с наименьшим временем блокировки (освободится раньше всех)
             earliest_proxy = min(non_empty_proxies.items(), key=lambda x: x[1])
             unlock_time = earliest_proxy[1] - time.time()
-            if unlock_time <= 300:  # Если освободится в течение 5 минут
+            # НЕ используем прокси, который заблокирован более чем на 1 минуту
+            # Если все прокси заблокированы более чем на 1 минуту, лучше пропустить страницу
+            if unlock_time <= 60:  # Если освободится в течение 1 минуты
                 proxy = earliest_proxy[0]
                 logging.warning(f'All proxies blocked, using earliest available: {proxy[:30]}... (unlocks in {unlock_time:.0f}s)')
             else:
-                # Если все прокси заблокированы надолго (>5 минут), возвращаем None
-                # чтобы не тратить время на бессмысленные попытки
-                if respTry <= 1:
-                    logging.warning(f'All proxies blocked for >5 minutes, no retries left, returning None')
-                    return None
-                # Если есть попытки, ждем еще немного
+                # Если все прокси заблокированы более чем на 1 минуту, возвращаем CAPTCHA
+                if respTry <= 2:
+                    logging.warning(f'All proxies blocked for >1 minute (unlock in {unlock_time:.0f}s), skipping page {page}')
+                    return 'CAPTCHA'
+                # Если есть попытки, ждем освобождения
                 wait_time = min(unlock_time, 60)
-                logging.warning(f'All proxies blocked for >5 minutes, waiting {wait_time:.0f}s before retry')
+                logging.warning(f'All proxies blocked for >1 minute, waiting {wait_time:.0f}s before retry')
                 time.sleep(wait_time)
-                # Рекурсивно вызываем с уменьшенным количеством попыток
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
         else:
             # Нет прокси в словаре вообще - это ошибка конфигурации
