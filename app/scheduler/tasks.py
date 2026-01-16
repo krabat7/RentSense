@@ -21,9 +21,39 @@ async def parsing(page=1):
     rooms = ['', 'room1', 'room2', 'room3', 'room4', 'room5', 'room6', 'room7', 'room8', 'room9']
     sorts = ['', 'creation_date_asc', 'creation_date_desc']
 
-    def process_page(start_page, sort, room):
+    def find_start_page(sort, room):
+        """
+        Находит хорошую стартовую страницу, начиная с большой (500) и идя назад.
+        Это позволяет быстрее найти новые объявления, не тратя время на поиск точной последней страницы.
+        """
+        # Начинаем с большой страницы (500) и идем назад с большим шагом
+        test_page = 500
+        valid_page = 1  # По умолчанию начинаем с первой
+        
+        # Быстрый поиск: проверяем страницы с шагом 50
+        while test_page >= 1:
+            pglist = listPages(test_page, sort, room)
+            if pglist == 'END' or pglist is None:
+                # Страница не существует, пробуем меньшую
+                test_page -= 50
+                if test_page < 1:
+                    break
+            elif isinstance(pglist, list) and len(pglist) > 0:
+                # Нашли валидную страницу с объявлениями
+                valid_page = test_page
+                logging.info(f'Found valid start page: {valid_page} for room={room or "all"}, sort={sort or "default"}')
+                return valid_page
+            else:
+                # Пустая страница, пробуем меньшую
+                test_page -= 50
+        
+        logging.info(f'Using default start page: 1 for room={room or "all"}, sort={sort or "default"}')
+        return valid_page
+    
+    def process_page(start_page, sort, room, reverse=False):
         """
         Парсит страницы начиная с start_page.
+        Если reverse=True, идет назад от start_page.
         Останавливается при достижении конца или при большом количестве ошибок.
         """
         current_page = start_page
@@ -32,14 +62,23 @@ async def parsing(page=1):
         existing_offers_count = 0
         
         consecutive_empty_pages = 0  # Счетчик пустых страниц подряд
+        page_direction = -1 if reverse else 1  # Направление движения по страницам
         
         while errors < 20:  # Уменьшено с 30 до 20 для более быстрого пропуска проблем
             pglist = listPages(current_page, sort, room)
             
             # 'END' означает, что страница не найдена или это конец списка
             if pglist == 'END':
-                logging.info(f'End of pglist reached (END) for room={room}, sort={sort}, page={current_page}')
-                break
+                if reverse:
+                    # Если идем назад и дошли до конца, переключаемся на движение вперед
+                    logging.info(f'End of pglist reached (END) while going reverse, switching to forward from page {start_page}')
+                    reverse = False
+                    page_direction = 1
+                    current_page = start_page + 1
+                    continue
+                else:
+                    logging.info(f'End of pglist reached (END) for room={room}, sort={sort}, page={current_page}')
+                    break
             
             # None означает критическую ошибку (getResponse вернул None)
             if pglist is None:
@@ -48,7 +87,13 @@ async def parsing(page=1):
                 if errors >= 20:
                     logging.info(f'Error limit {errors} reached, stopping')
                     break
-                current_page += 1
+                current_page += page_direction
+                # Если идем назад и дошли до страницы 1, переключаемся на движение вперед
+                if reverse and current_page < 1:
+                    logging.info(f'Reached page 1, switching to forward direction from page {start_page}')
+                    reverse = False
+                    page_direction = 1
+                    current_page = start_page + 1
                 continue
             
             # Пустой список [] означает, что объявлений на странице нет (но страница существует)
@@ -60,7 +105,13 @@ async def parsing(page=1):
                 if consecutive_empty_pages >= 10:  # Возвращено к 10 - работало раньше
                     logging.info(f'{consecutive_empty_pages} consecutive empty pages, stopping for room={room}, sort={sort}')
                     break
-                current_page += 1
+                current_page += page_direction
+                # Если идем назад и дошли до страницы 1, переключаемся на движение вперед
+                if reverse and current_page < 1:
+                    logging.info(f'Reached page 1, switching to forward direction from page {start_page}')
+                    reverse = False
+                    page_direction = 1
+                    current_page = start_page + 1
                 continue
             else:
                 consecutive_empty_pages = 0  # Сбрасываем счетчик при успехе
@@ -94,12 +145,19 @@ async def parsing(page=1):
                     # Если список был пуст, это не ошибка
                     errors = 0
             
-            current_page += 1
+            current_page += page_direction
+            
+            # Если идем назад и дошли до страницы 1, переключаемся на движение вперед
+            if reverse and current_page < 1:
+                logging.info(f'Reached page 1, switching to forward direction from page {start_page}')
+                reverse = False
+                page_direction = 1
+                current_page = start_page + 1
             
             # Лимит на страницы убран - парсим до конца списка
             # Остановка происходит только при:
             # 1. Достижении конца списка ('END')
-            # 2. 3 пустых страницах подряд
+            # 2. 10 пустых страницах подряд
             # 3. 20 ошибках подряд
         
         logging.info(f'Finished: room={room}, sort={sort}, pages={current_page - start_page}, new={new_offers_count}, existing={existing_offers_count}')
@@ -140,8 +198,16 @@ async def parsing(page=1):
                             skipped_combinations = 0
                         continue
                 
-                logging.info(f'Starting parsing: room={room or "all"}, sort={sort or "default"}, page=1 (elapsed: {elapsed:.1f}s)')
-                process_page(1, sort, room)  # Всегда начинаем с первой страницы
+                # Находим хорошую стартовую страницу (ближе к концу списка) для новых объявлений
+                start_page = find_start_page(sort, room)
+                if start_page > 10:
+                    # Начинаем с найденной страницы и идем назад, затем вперед
+                    logging.info(f'Starting parsing: room={room or "all"}, sort={sort or "default"}, from page={start_page} (reverse) (elapsed: {elapsed:.1f}s)')
+                    process_page(start_page, sort, room, reverse=True)
+                else:
+                    # Если не нашли хорошую страницу, начинаем с первой
+                    logging.info(f'Starting parsing: room={room or "all"}, sort={sort or "default"}, page=1 (elapsed: {elapsed:.1f}s)')
+                    process_page(1, sort, room, reverse=False)
                 logging.info(f'Finished: room={room or "all"}, sort={sort or "default"}')
                 skipped_combinations = 0  # Сбрасываем счетчик при успешной комбинации
         
