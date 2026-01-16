@@ -23,44 +23,35 @@ async def parsing(page=1):
 
     def find_start_page(sort, room):
         """
-        Находит хорошую стартовую страницу, начиная с большой (500) и идя назад.
-        Это позволяет быстрее найти новые объявления, не тратя время на поиск точной последней страницы.
+        Находит хорошую стартовую страницу для новых объявлений.
+        Упрощенная версия: быстро проверяет несколько страниц, если не находит - использует случайную.
         """
-        # Начинаем с большой страницы (500) и идем назад с большим шагом
-        test_page = 500
-        valid_page = 1  # По умолчанию начинаем с первой
-        attempts = 0
-        max_attempts = 10  # Максимум 10 попыток найти валидную страницу
+        import random
         
-        # Быстрый поиск: проверяем страницы с шагом 50
-        while test_page >= 1 and attempts < max_attempts:
-            attempts += 1
+        # Список страниц для быстрой проверки (ближе к концу списка, где больше новых объявлений)
+        test_pages = [300, 200, 150, 100, 50]
+        max_quick_attempts = 3  # Максимум 3 быстрые попытки
+        
+        # Быстрая проверка нескольких страниц
+        for i, test_page in enumerate(test_pages[:max_quick_attempts]):
             pglist = listPages(test_page, sort, room)
             
-            # Если получили CAPTCHA или все прокси заблокированы, пробуем меньшую страницу
-            if pglist == 'END' or pglist is None:
-                # Страница не существует, пробуем меньшую
-                test_page -= 50
-                if test_page < 1:
-                    break
-            elif isinstance(pglist, list):
-                if len(pglist) > 0:
-                    # Нашли валидную страницу с объявлениями
-                    valid_page = test_page
-                    logging.info(f'Found valid start page: {valid_page} for room={room or "all"}, sort={sort or "default"}')
-                    return valid_page
-                else:
-                    # Пустая страница (возможно CAPTCHA), пробуем меньшую
-                    test_page -= 50
-            else:
-                # Неожиданный результат, пробуем меньшую страницу
-                test_page -= 50
+            # Если получили валидную страницу с объявлениями
+            if isinstance(pglist, list) and len(pglist) > 0:
+                logging.info(f'Found valid start page: {test_page} for room={room or "all"}, sort={sort or "default"}')
+                return test_page
+            
+            # Если получили END, значит страница не существует, пробуем следующую
+            if pglist == 'END':
+                continue
+            
+            # Если получили None или пустой список (возможно CAPTCHA), пробуем следующую
+            # Но не тратим много времени на поиск
         
-        # Если не нашли валидную страницу, используем рандомную страницу в диапазоне 100-300
-        # Это лучше, чем начинать с первой страницы
-        import random
-        fallback_page = random.randint(100, 300)
-        logging.info(f'Using fallback start page: {fallback_page} for room={room or "all"}, sort={sort or "default"}')
+        # Если не нашли валидную страницу за быстрые попытки, используем случайную страницу
+        # Это лучше, чем начинать с первой страницы - больше шансов найти новые объявления
+        fallback_page = random.randint(50, 250)
+        logging.info(f'Using random fallback start page: {fallback_page} for room={room or "all"}, sort={sort or "default"} (could not find valid page quickly)')
         return fallback_page
     
     def process_page(start_page, sort, room, reverse=False):
