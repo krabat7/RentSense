@@ -24,12 +24,20 @@ echo
 # 4. Статистика по ключевым словам
 echo "[4] Статистика за последние 500 строк:"
 total_lines=$(docker logs --tail 500 rentsense_parser_1 2>&1 | wc -l)
-success=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "SUCCESS\|New offers added" || echo "0")
-captcha=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "CAPTCHA" || echo "0")
-blocked=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "blocked" || echo "0")
-status_403=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "Status=403" || echo "0")
-status_200=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "Status=200" || echo "0")
-connection_error=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "connection error\|ERR_PROXY" || echo "0")
+success=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "SUCCESS\|New offers added" 2>/dev/null || echo "0")
+captcha=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "CAPTCHA" 2>/dev/null || echo "0")
+blocked=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "blocked" 2>/dev/null || echo "0")
+status_403=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "Status=403" 2>/dev/null || echo "0")
+status_200=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "Status=200" 2>/dev/null || echo "0")
+connection_error=$(docker logs --tail 500 rentsense_parser_1 2>&1 | grep -c "connection error\|ERR_PROXY" 2>/dev/null || echo "0")
+
+# Убираем переносы строк из переменных
+success=$(echo "$success" | tr -d '\n' | head -1)
+captcha=$(echo "$captcha" | tr -d '\n' | head -1)
+blocked=$(echo "$blocked" | tr -d '\n' | head -1)
+status_403=$(echo "$status_403" | tr -d '\n' | head -1)
+status_200=$(echo "$status_200" | tr -d '\n' | head -1)
+connection_error=$(echo "$connection_error" | tr -d '\n' | head -1)
 
 echo "   Всего строк логов: $total_lines"
 echo "   Успешных добавлений: $success"
@@ -42,11 +50,20 @@ echo
 
 # 5. Проверка базы данных
 echo "[5] Проверка базы данных:"
-docker exec rentsense_db_1 mysql -u root -proot_password rentsense -e "
-SELECT COUNT(*) as total FROM offers;
-SELECT COUNT(*) as last_4h FROM offers WHERE created_at >= DATE_SUB(NOW(), INTERVAL 4 HOUR);
-SELECT cian_id, price, created_at FROM offers ORDER BY created_at DESC LIMIT 5;
-" 2>&1 || echo "[WARN] Не удалось подключиться к БД"
+# Пытаемся найти контейнер БД
+db_container=$(docker ps --format "{{.Names}}" | grep -E "(db|mysql|database)" | head -1)
+if [ -z "$db_container" ]; then
+    echo "[WARN] Контейнер БД не найден. Проверяю все контейнеры:"
+    docker ps --format "{{.Names}}"
+    db_container=""
+else
+    echo "   Найден контейнер БД: $db_container"
+    docker exec "$db_container" mysql -u root -proot_password rentsense -e "
+    SELECT COUNT(*) as total FROM offers;
+    SELECT COUNT(*) as last_4h FROM offers WHERE created_at >= DATE_SUB(NOW(), INTERVAL 4 HOUR);
+    SELECT cian_id, price, created_at FROM offers ORDER BY created_at DESC LIMIT 5;
+    " 2>&1 || echo "[WARN] Не удалось подключиться к БД"
+fi
 echo
 
 # 6. Последние действия парсера
@@ -78,18 +95,21 @@ echo "==========================================================================
 echo "АНАЛИЗ:"
 echo "================================================================================="
 echo
-if [ "$success" -eq "0" ] && [ "$captcha" -gt "5" ]; then
+# Проверяем, что переменные - числа
+if [ -n "$success" ] && [ -n "$captcha" ] && [ "$success" -eq "0" ] && [ "$captcha" -gt "5" ] 2>/dev/null; then
     echo "[CRITICAL] Проблема: Все прокси возвращают CAPTCHA!"
     echo "   - CIAN агрессивно блокирует прокси"
     echo "   - Нужны более качественные прокси или увеличение задержек"
+    echo "   - Статистика: $captcha CAPTCHA, $success успешных добавлений"
 fi
-if [ "$available" -eq "0" ]; then
-    echo "[CRITICAL] Проблема: Нет доступных прокси!"
-    echo "   - Все прокси заблокированы"
-fi
-if [ "$status_403" -gt "$status_200" ]; then
-    echo "[WARN] Больше 403 ошибок, чем успешных запросов"
+if [ -n "$status_403" ] && [ -n "$status_200" ] && [ "$status_403" -gt "$status_200" ] 2>/dev/null; then
+    echo "[WARN] Больше 403 ошибок ($status_403), чем успешных запросов ($status_200)"
     echo "   - CIAN блокирует большинство запросов"
+fi
+if [ -n "$captcha" ] && [ "$captcha" -gt "100" ] 2>/dev/null; then
+    echo "[CRITICAL] Очень много CAPTCHA ($captcha за последние 500 строк)"
+    echo "   - Все прокси заблокированы CIAN"
+    echo "   - Рекомендуется: увеличить задержки или заменить прокси"
 fi
 echo
 
