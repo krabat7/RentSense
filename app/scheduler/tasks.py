@@ -29,26 +29,39 @@ async def parsing(page=1):
         # Начинаем с большой страницы (500) и идем назад с большим шагом
         test_page = 500
         valid_page = 1  # По умолчанию начинаем с первой
+        attempts = 0
+        max_attempts = 10  # Максимум 10 попыток найти валидную страницу
         
         # Быстрый поиск: проверяем страницы с шагом 50
-        while test_page >= 1:
+        while test_page >= 1 and attempts < max_attempts:
+            attempts += 1
             pglist = listPages(test_page, sort, room)
+            
+            # Если получили CAPTCHA или все прокси заблокированы, пробуем меньшую страницу
             if pglist == 'END' or pglist is None:
                 # Страница не существует, пробуем меньшую
                 test_page -= 50
                 if test_page < 1:
                     break
-            elif isinstance(pglist, list) and len(pglist) > 0:
-                # Нашли валидную страницу с объявлениями
-                valid_page = test_page
-                logging.info(f'Found valid start page: {valid_page} for room={room or "all"}, sort={sort or "default"}')
-                return valid_page
+            elif isinstance(pglist, list):
+                if len(pglist) > 0:
+                    # Нашли валидную страницу с объявлениями
+                    valid_page = test_page
+                    logging.info(f'Found valid start page: {valid_page} for room={room or "all"}, sort={sort or "default"}')
+                    return valid_page
+                else:
+                    # Пустая страница (возможно CAPTCHA), пробуем меньшую
+                    test_page -= 50
             else:
-                # Пустая страница, пробуем меньшую
+                # Неожиданный результат, пробуем меньшую страницу
                 test_page -= 50
         
-        logging.info(f'Using default start page: 1 for room={room or "all"}, sort={sort or "default"}')
-        return valid_page
+        # Если не нашли валидную страницу, используем рандомную страницу в диапазоне 100-300
+        # Это лучше, чем начинать с первой страницы
+        import random
+        fallback_page = random.randint(100, 300)
+        logging.info(f'Using fallback start page: {fallback_page} for room={room or "all"}, sort={sort or "default"}')
+        return fallback_page
     
     def process_page(start_page, sort, room, reverse=False):
         """
