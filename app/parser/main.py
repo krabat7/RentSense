@@ -336,53 +336,53 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             proxyDict[proxy] = time.time() + (1 * 60)
             return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
             
-           except Exception as e:
-               error_msg = str(e)
-               logging.error(f'getResponse: Exception for proxy {proxy[:50] if proxy else "none"}...: {e}')
-               
-               # Если браузер закрыт, пересоздаем его
-               if 'closed' in error_msg.lower() or 'has been closed' in error_msg.lower():
-                   logging.warning('Browser/context/page was closed, recreating browser')
-                   try:
-                       close_browser()
-                   except:
-                       pass
-                   # Принудительно сбрасываем браузер
-                   global _browser, _playwright
-                   _browser = None
-                   _playwright = None
-               
-               if not respTry:
-                   logging.warning(f'getResponse: No retries left after exception, returning None')
-                   return None
-               
-               # Блокируем прокси при исключении
-               if proxy:
-                   # Проверяем, является ли это ошибкой подключения
-                   if 'connection' in error_msg.lower() or 'err_proxy' in error_msg.lower():
-                       # Ошибка подключения - блокируем на более длительное время
-                       proxyConnectionErrors[proxy] = proxyConnectionErrors.get(proxy, 0) + 1
-                       connection_errors = proxyConnectionErrors[proxy]
-                       
-                       # Если много ошибок подключения подряд, блокируем на долго
-                       if connection_errors >= 3:
-                           block_time = 60 * 60  # 1 час блокировки
-                           logging.warning(f'Proxy {proxy[:50]}... has {connection_errors} connection errors, blocking for 1 hour')
-                       elif connection_errors >= 2:
-                           block_time = 30 * 60  # 30 минут блокировки
-                           logging.warning(f'Proxy {proxy[:50]}... has {connection_errors} connection errors, blocking for 30 min')
-                       else:
-                           block_time = 10 * 60  # 10 минут блокировки
-                           logging.warning(f'Proxy {proxy[:50]}... connection error, blocking for 10 min')
-                       
-                       proxyDict[proxy] = time.time() + block_time
-                       proxyBlockedTime[proxy] = time.time()
-                   else:
-                       # Другая ошибка - обычная блокировка
-                       proxyDict[proxy] = time.time() + (1 * 60)
-                   proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
-               
-               return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+    except Exception as e:
+        error_msg = str(e)
+        logging.error(f'getResponse: Exception for proxy {proxy[:50] if proxy else "none"}...: {e}')
+        
+        # Если браузер закрыт, пересоздаем его
+        if 'closed' in error_msg.lower() or 'has been closed' in error_msg.lower():
+            logging.warning('Browser/context/page was closed, recreating browser')
+            try:
+                close_browser()
+            except:
+                pass
+            # Принудительно сбрасываем браузер
+            global _browser, _playwright
+            _browser = None
+            _playwright = None
+        
+        if not respTry:
+            logging.warning(f'getResponse: No retries left after exception, returning None')
+            return None
+        
+        # Блокируем прокси при исключении
+        if proxy:
+            # Проверяем, является ли это ошибкой подключения
+            if 'connection' in error_msg.lower() or 'err_proxy' in error_msg.lower():
+                # Ошибка подключения - блокируем на более длительное время
+                proxyConnectionErrors[proxy] = proxyConnectionErrors.get(proxy, 0) + 1
+                connection_errors = proxyConnectionErrors[proxy]
+                
+                # Если много ошибок подключения подряд, блокируем на долго
+                if connection_errors >= 3:
+                    block_time = 60 * 60  # 1 час блокировки
+                    logging.warning(f'Proxy {proxy[:50]}... has {connection_errors} connection errors, blocking for 1 hour')
+                elif connection_errors >= 2:
+                    block_time = 30 * 60  # 30 минут блокировки
+                    logging.warning(f'Proxy {proxy[:50]}... has {connection_errors} connection errors, blocking for 30 min')
+                else:
+                    block_time = 10 * 60  # 10 минут блокировки
+                    logging.warning(f'Proxy {proxy[:50]}... connection error, blocking for 10 min')
+                
+                proxyDict[proxy] = time.time() + block_time
+                proxyBlockedTime[proxy] = time.time()
+            else:
+                # Другая ошибка - обычная блокировка
+                proxyDict[proxy] = time.time() + (1 * 60)
+            proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+        
+        return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
 def prePage(data, type=0):
     if type:
         # Для страницы объявления ищем "offerData"
