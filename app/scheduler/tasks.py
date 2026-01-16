@@ -126,22 +126,36 @@ async def parsing(page=1):
                 logging.info(f'End of data reached for room={room}, sort={sort}, page={current_page}')
                 break
             
-            # Если data == 'OK' - объявления были обработаны (даже если все уже были в базе)
-            # Если data == None - это не обязательно ошибка, возможно все объявления уже в базе или отфильтрованы
-            # Считаем ошибкой только если на странице были объявления, но парсинг не удался
+            # Обрабатываем разные результаты парсинга
             if data == 'OK':
-                # Если данные успешно обработаны, считаем это успешным парсингом
+                # Новые объявления были добавлены - это успех!
                 errors = 0
                 new_offers_count += 1
+                logging.info(f'SUCCESS: New offers added from page={current_page}, room={room}, sort={sort}')
+            elif data == 'EXISTING':
+                # Все объявления уже в базе - это нормально, не ошибка
+                errors = 0
+                existing_offers_count += 1
+                logging.debug(f'All offers already exist on page={current_page}, room={room}, sort={sort}')
+            elif data == 'FILTERED':
+                # Все объявления отфильтрованы - это нормально, не ошибка
+                errors = 0
+                logging.debug(f'All offers filtered on page={current_page}, room={room}, sort={sort}')
+            elif data == 'SKIPPED':
+                # Все объявления пропущены из-за ошибок/CAPTCHA - это проблема, но не критично
+                errors += 1
+                logging.warning(f'All offers skipped on page={current_page}, room={room}, sort={sort} (likely CAPTCHA/errors), error count: {errors}')
+                if errors >= 20:
+                    logging.info(f'Error limit {errors} reached, stopping')
+                    break
             elif data is None:
                 # Если data == None, это может быть:
-                # 1. Все объявления уже в базе (не ошибка)
-                # 2. Все объявления отфильтрованы (не ошибка)
-                # 3. Ошибка парсинга (ошибка)
+                # 1. Пустой список объявлений (не ошибка)
+                # 2. Ошибка парсинга (ошибка)
                 # Увеличиваем счетчик ошибок только если на странице были объявления
                 if len(pglist) > 0:
                     errors += 1
-                    logging.info(f'Parse returned None for page={current_page}, room={room}, sort={sort} (had {len(pglist)} offers), error count: {errors}')
+                    logging.warning(f'Parse returned None for page={current_page}, room={room}, sort={sort} (had {len(pglist)} offers), error count: {errors}')
                     if errors >= 20:
                         logging.info(f'Error limit {errors} reached, stopping')
                         break

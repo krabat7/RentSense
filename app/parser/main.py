@@ -628,8 +628,33 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
         continue
     
     logging.info(f"Apart pages {pagesList[:5]}{'...' if len(pagesList) > 5 else ''} processed. Added: {pages_cnt}, Existing: {existing_count}, Filtered: {filtered_count}, Skipped: {skipped_count}")
-    # Возвращаем 'OK' даже если pages_cnt == 0, чтобы показать, что страница была обработана
-    # Это важно для различения пустых страниц и страниц, где все объявления уже в базе/отфильтрованы
+    
+    # Если были добавлены новые объявления, возвращаем 'OK'
+    if pages_cnt > 0:
+        logging.info(f"SUCCESS: Added {pages_cnt} new offers from {len(pagesList)} total")
+        return 'OK'
+    
+    # Если все объявления уже в базе, возвращаем 'EXISTING'
+    if existing_count > 0 and pages_cnt == 0 and filtered_count == 0:
+        logging.info(f"All {existing_count} offers already exist in database")
+        return 'EXISTING'
+    
+    # Если все объявления отфильтрованы, возвращаем 'FILTERED'
+    if filtered_count > 0 and pages_cnt == 0:
+        logging.info(f"All {filtered_count} offers were filtered out")
+        return 'FILTERED'
+    
+    # Если все объявления пропущены (CAPTCHA/ошибки), возвращаем 'SKIPPED'
+    if skipped_count > 0 and pages_cnt == 0:
+        logging.warning(f"All {skipped_count} offers were skipped due to errors/CAPTCHA")
+        return 'SKIPPED'
+    
+    # Если список был пуст или ничего не обработано
+    if len(pagesList) == 0:
+        logging.warning("Empty pagesList passed to apartPage")
+        return None
+    
+    # По умолчанию возвращаем 'OK' для обработанных страниц
     return 'OK'
 
 
