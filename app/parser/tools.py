@@ -59,6 +59,9 @@ proxyBlockedTime = {proxy: 0.0 for proxy in proxyDict.keys()}
 # Счетчик ошибок для каждого прокси (не блокируем сразу после первой ошибки)
 proxyErrorCount = {proxy: 0 for proxy in proxyDict.keys()}
 
+# Счетчик ошибок подключения для каждого прокси (ERR_PROXY_CONNECTION_FAILED)
+proxyConnectionErrors = {proxy: 0 for proxy in proxyDict.keys()}
+
 def check_and_unfreeze_proxies():
     """
     Проверяет заблокированные прокси и размораживает их через определенное время.
