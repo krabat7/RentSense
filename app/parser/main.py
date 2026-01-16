@@ -219,15 +219,20 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 # Блокируем прокси при ошибках
                 if status in (403, 429):
-                    # Уменьшено время блокировки с 15 до 10 минут для быстрей восстановления
-                    block_time = 10 * 60  # 10 минут блокировки
+                    # Увеличено время блокировки для более консервативного подхода
+                    block_time = 20 * 60  # 20 минут блокировки (увеличено с 10)
                     proxyDict[proxy] = time.time() + block_time
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
                         proxyBlockedTime[proxy] = time.time()
-                        block_time = 15 * 60  # 15 минут при повторных ошибках
+                        block_time = 30 * 60  # 30 минут при повторных ошибках (увеличено с 15)
                         proxyDict[proxy] = time.time() + block_time
                     logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
+                    # Делаем паузу перед следующей попыткой после 403/429
+                    if respTry > 1:
+                        delay = random.uniform(10, 20)  # 10-20 секунд пауза
+                        logging.info(f'Waiting {delay:.1f}s before retry after {status}')
+                        time.sleep(delay)
                 elif status == 404:
                     logging.info(f'getResponse: Page {page} not found (404)')
                     return None
@@ -254,40 +259,53 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if content and ('captcha' in content.lower() or 'капча' in content.lower() or 'recaptcha' in content.lower()):
                 logging.error("CAPTCHA detected in response content!")
                 if proxy:
-                    logging.warning(f"Blocking proxy {proxy[:50]}... for 30 minutes due to CAPTCHA")
-                    proxyDict[proxy] = time.time() + (30 * 60)  # 30 минут блокировки
+                    logging.warning(f"Blocking proxy {proxy[:50]}... for 60 minutes due to CAPTCHA")
+                    proxyDict[proxy] = time.time() + (60 * 60)  # 60 минут блокировки (увеличено с 30)
                     proxyBlockedTime[proxy] = time.time()
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                 
                 # Увеличиваем счетчик CAPTCHA для этой страницы
                 _captcha_count[page] = _captcha_count.get(page, 0) + 1
                 
-                # Если 2 или более прокси подряд получили CAPTCHA, сразу пропускаем страницу
+                # Если 2 или более прокси подряд получили CAPTCHA, делаем длительную паузу и пропускаем страницу
                 if _captcha_count[page] >= 2:
-                    logging.warning(f'{_captcha_count[page]} CAPTCHA in a row for page {page}, skipping immediately')
+                    logging.warning(f'{_captcha_count[page]} CAPTCHA in a row for page {page}, waiting 2 minutes before skipping')
+                    time.sleep(120)  # 2 минуты пауза после множественных CAPTCHA
                     return 'CAPTCHA'
                 
-                # Если осталось мало попыток и все прокси заблокированы, сразу возвращаем CAPTCHA
+                # Если осталось мало попыток и все прокси заблокированы, делаем паузу и возвращаем CAPTCHA
                 if respTry <= 2:
                     # Проверяем, сколько прокси доступно
                     available_after_captcha = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
                     if len(available_after_captcha) == 0:
-                        logging.warning(f'All proxies blocked after CAPTCHA, skipping page {page}')
+                        logging.warning(f'All proxies blocked after CAPTCHA, waiting 1 minute before skipping page {page}')
+                        time.sleep(60)  # 1 минута пауза
                         return 'CAPTCHA'
+                
+                # Делаем паузу перед следующей попыткой после CAPTCHA
+                if respTry > 1:
+                    delay = random.uniform(30, 60)  # 30-60 секунд пауза
+                    logging.info(f'Waiting {delay:.1f}s before retry after CAPTCHA')
+                    time.sleep(delay)
                 
                 if not respTry:
                     return 'CAPTCHA'
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
             
             # Обновляем время блокировки прокси после успешного запроса
-            # Блокируем прокси на 30 секунд, чтобы не использовать тот же прокси повторно
-            # Если используются разные прокси, пауза не нужна - каждый запрос идет с нового IP
-            proxyDict[proxy] = time.time() + 30  # 30 секунд блокировки прокси
+            # Блокируем прокси на 2 минуты после успешного запроса, чтобы дать ему "отдохнуть"
+            # Это снижает вероятность CAPTCHA при повторном использовании
+            proxyDict[proxy] = time.time() + (2 * 60)  # 2 минуты блокировки прокси после успешного запроса
             proxyErrorCount[proxy] = 0  # Сбрасываем счетчик ошибок
             # Сбрасываем счетчик CAPTCHA при успешном запросе
             if page in _captcha_count:
                 _captcha_count[page] = 0
-            # Убрали sleep - при использовании разных прокси пауза не нужна
+            
+            # Добавляем случайную задержку между запросами (5-15 секунд)
+            # Это помогает избежать детекции автоматизации
+            delay = random.uniform(5, 15)
+            logging.info(f'getResponse: Success, content length={len(content)}, waiting {delay:.1f}s before next request')
+            time.sleep(delay)
             
             logging.info(f'getResponse: Success, content length={len(content)}')
             return content
