@@ -11,7 +11,7 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from app.parser.tools import proxyDict, proxyTemporaryBan, proxyBlockedTime, proxyErrorCount, proxyConnectionErrors, ban_proxies_by_pattern, unban_all_proxies
+from app.parser.tools import proxyDict, proxyTemporaryBan, proxyBlockedTime, proxyErrorCount, proxyConnectionErrors, ban_proxies_by_pattern, unban_all_proxies, save_proxy_bans
 import time
 
 def list_proxies():
@@ -91,8 +91,11 @@ def ban_old_proxies(exclude_patterns=None):
         banned += 1
         print(f"  [BANNED] {proxy[:60]}...")
     
+    # Сохраняем баны в файл (чтобы парсер их увидел)
+    save_proxy_bans(proxyTemporaryBan)
     print()
     print(f"Заблокировано {banned} прокси.")
+    print(f"Баны сохранены в файл .proxy_bans")
     print()
     list_proxies()
 
