@@ -102,6 +102,14 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         # Выбираем из прокси с наименьшим количеством ошибок (первые 50% или минимум 1)
         best_proxies = available_proxies_list[:max(1, len(available_proxies_list) // 2)]
         proxy = random.choice(best_proxies)
+        
+        # Логируем выбор прокси (только при первом запросе страницы)
+        if respTry == 5:
+            new_proxies = [p for p in best_proxies if '4MfBTo:mgCBFh' in p]
+            if new_proxies:
+                logging.info(f'Selected proxy from {len(best_proxies)} best proxies (errors: {[proxyConnectionErrors.get(p, 0) for p in best_proxies[:3]]}), new proxies in pool: {len(new_proxies)}')
+            else:
+                logging.debug(f'Selected proxy from {len(best_proxies)} best proxies (errors: {[proxyConnectionErrors.get(p, 0) for p in best_proxies[:3]]}), no new proxies in best pool')
     else:
         # Если все прокси заблокированы после ожидания
         # НЕ используем пустой прокси - он всегда дает 403, это бессмысленно

@@ -82,13 +82,11 @@ def load_proxy_bans():
                 proxyTemporaryBan[proxy] = proxy in banned_proxies
                 if proxyTemporaryBan[proxy] and not was_banned:
                     banned_count += 1
-            if banned_count > 0 or len(banned_proxies) > 0:
+            if len(banned_proxies) > 0:
                 logging.info(f"Loaded {len(banned_proxies)} temporary bans from {PROXY_BANS_FILE} (applied {banned_count} new bans)")
         except Exception as e:
             logging.error(f"Error loading proxy bans from file {PROXY_BANS_FILE}: {e}")
-    else:
-        # Не логируем каждый раз, если файла нет - это нормально
-        pass
+    # Если файла нет - это нормально, не логируем каждый раз
 
 def save_proxy_bans():
     """Сохраняет временно забаненные прокси в файл."""
