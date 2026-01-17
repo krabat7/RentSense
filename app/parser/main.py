@@ -66,7 +66,8 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         banned_proxies = sum(1 for p in proxyDict.keys() if p != '' and proxyTemporaryBan.get(p, False))
         time_blocked = sum(1 for k, v in proxyDict.items() if k != '' and v > time.time() and not proxyTemporaryBan.get(k, False))
         available_count = len(available_proxies)
-        logging.info(f'Proxy stats: total={total_proxies}, banned={banned_proxies}, time_blocked={time_blocked}, available={available_count}')
+        new_proxies_available = sum(1 for p in available_proxies.keys() if '4MfBTo:mgCBFh' in p)
+        logging.info(f'Proxy stats: total={total_proxies}, banned={banned_proxies}, time_blocked={time_blocked}, available={available_count}, new_proxies_available={new_proxies_available}')
     
     # Проверяем, не заблокированы ли все прокси CAPTCHA (блокировка > 10 минут)
     # Если да, сразу возвращаем CAPTCHA, чтобы не тратить время
@@ -106,10 +107,17 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         # Логируем выбор прокси (только при первом запросе страницы)
         if respTry == 5:
             new_proxies = [p for p in best_proxies if '4MfBTo:mgCBFh' in p]
+            errors_list = [proxyConnectionErrors.get(p, 0) for p in best_proxies[:5]]
             if new_proxies:
-                logging.info(f'Selected proxy from {len(best_proxies)} best proxies (errors: {[proxyConnectionErrors.get(p, 0) for p in best_proxies[:3]]}), new proxies in pool: {len(new_proxies)}')
+                logging.info(f'Selected proxy from {len(best_proxies)} best proxies (errors: {errors_list}), new proxies in pool: {len(new_proxies)}')
             else:
-                logging.debug(f'Selected proxy from {len(best_proxies)} best proxies (errors: {[proxyConnectionErrors.get(p, 0) for p in best_proxies[:3]]}), no new proxies in best pool')
+                # Проверяем, есть ли новые прокси в доступных, но не в лучших
+                new_in_available = [p for p in available_proxies.keys() if '4MfBTo:mgCBFh' in p]
+                if new_in_available:
+                    new_errors = [proxyConnectionErrors.get(p, 0) for p in new_in_available]
+                    logging.warning(f'Selected proxy from {len(best_proxies)} best proxies (errors: {errors_list}), new proxies NOT in best pool (have {len(new_in_available)} new with errors: {new_errors})')
+                else:
+                    logging.info(f'Selected proxy from {len(best_proxies)} best proxies (errors: {errors_list}), no new proxies available')
     else:
         # Если все прокси заблокированы после ожидания
         # НЕ используем пустой прокси - он всегда дает 403, это бессмысленно
