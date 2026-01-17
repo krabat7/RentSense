@@ -50,6 +50,10 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
     
     if respTry == 5:
         check_and_unfreeze_proxies()
+        # Перезагружаем временные баны из файла (на случай изменений через manage_proxies.py)
+        from .tools import load_proxy_bans
+        global proxyTemporaryBan
+        proxyTemporaryBan = load_proxy_bans()
         # Сбрасываем счетчик CAPTCHA для новой страницы
         _captcha_count[page] = 0
     
