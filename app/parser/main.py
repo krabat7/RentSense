@@ -60,6 +60,14 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         if v <= time.time() and k != '' and not proxyTemporaryBan.get(k, False)
     }
     
+    # Логируем статистику доступных прокси (только при первом запросе страницы)
+    if respTry == 5:
+        total_proxies = len([p for p in proxyDict.keys() if p != ''])
+        banned_proxies = sum(1 for p in proxyDict.keys() if p != '' and proxyTemporaryBan.get(p, False))
+        time_blocked = sum(1 for k, v in proxyDict.items() if k != '' and v > time.time() and not proxyTemporaryBan.get(k, False))
+        available_count = len(available_proxies)
+        logging.info(f'Proxy stats: total={total_proxies}, banned={banned_proxies}, time_blocked={time_blocked}, available={available_count}')
+    
     # Проверяем, не заблокированы ли все прокси CAPTCHA (блокировка > 10 минут)
     # Если да, сразу возвращаем CAPTCHA, чтобы не тратить время
     if len(available_proxies) < 1:
