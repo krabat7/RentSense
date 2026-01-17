@@ -44,7 +44,7 @@ env_path = Path(__file__).parent.parent.parent / '.env'
 env = dotenv_values(env_path)
 proxyDict = {
     proxy: 0.0
-    for proxy in (env.get(f'PROXY{i}') for i in range(1, 26)) if proxy  # Поддержка до PROXY25
+    for proxy in (env.get(f'PROXY{i}') for i in range(1, 31)) if proxy  # Поддержка до PROXY30
 }
 proxyDict[''] = 0.0
 
