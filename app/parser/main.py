@@ -6,7 +6,7 @@ import json
 from playwright.sync_api import sync_playwright
 from .database import DB, model_classes
 from .pagecheck import pagecheck
-from .tools import headers, proxyDict, proxyBlockedTime, proxyErrorCount, proxyConnectionErrors, check_and_unfreeze_proxies, recjson
+from .tools import headers, proxyDict, proxyBlockedTime, proxyErrorCount, proxyConnectionErrors, proxyTemporaryBan, check_and_unfreeze_proxies, recjson
 
 URL = 'https://www.cian.ru'
 
@@ -53,8 +53,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         # Сбрасываем счетчик CAPTCHA для новой страницы
         _captcha_count[page] = 0
     
-    # Исключаем пустой прокси из доступных - он всегда дает 403
-    available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
+    # Исключаем пустой прокси и временно забаненные прокси из доступных
+    available_proxies = {
+        k: v for k, v in proxyDict.items() 
+        if v <= time.time() and k != '' and not proxyTemporaryBan.get(k, False)
+    }
     
     # Проверяем, не заблокированы ли все прокси CAPTCHA (блокировка > 10 минут)
     # Если да, сразу возвращаем CAPTCHA, чтобы не тратить время

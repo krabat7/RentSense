@@ -62,6 +62,10 @@ proxyErrorCount = {proxy: 0 for proxy in proxyDict.keys()}
 # Счетчик ошибок подключения для каждого прокси (ERR_PROXY_CONNECTION_FAILED)
 proxyConnectionErrors = {proxy: 0 for proxy in proxyDict.keys()}
 
+# Временный бан прокси (полное исключение из ротации, даже если разблокирован)
+# Используется для "отдыха" прокси или тестирования новых прокси
+proxyTemporaryBan = {proxy: False for proxy in proxyDict.keys()}
+
 def check_and_unfreeze_proxies():
     """
     Проверяет заблокированные прокси и размораживает их через определенное время.
@@ -71,6 +75,10 @@ def check_and_unfreeze_proxies():
     unfrozen_count = 0
     
     for proxy, blocked_until in proxyDict.items():
+        # Пропускаем временно забаненные прокси
+        if proxyTemporaryBan.get(proxy, False):
+            continue
+            
         # Если прокси заблокирован более чем на 5 минут, проверяем его
         if blocked_until > current_time:
             blocked_duration = blocked_until - current_time
@@ -89,6 +97,52 @@ def check_and_unfreeze_proxies():
         logging.info(f'Unfrozen {unfrozen_count} proxy/proxies')
     
     return unfrozen_count
+
+
+def ban_proxies_by_pattern(pattern='', exclude_patterns=None):
+    """
+    Временно блокирует прокси по паттерну (например, по части IP или имени).
+    exclude_patterns - список паттернов для исключения (например, новые прокси)
+    """
+    banned_count = 0
+    for proxy in proxyDict.keys():
+        if proxy == '':
+            continue
+        if pattern and pattern in proxy:
+            # Проверяем исключения
+            if exclude_patterns:
+                should_exclude = any(exc in proxy for exc in exclude_patterns)
+                if should_exclude:
+                    continue
+            proxyTemporaryBan[proxy] = True
+            banned_count += 1
+            logging.info(f'Temporarily banned proxy: {proxy[:50]}...')
+    logging.info(f'Banned {banned_count} proxies by pattern "{pattern}"')
+    return banned_count
+
+
+def unban_all_proxies():
+    """
+    Разбан всех прокси и сброс всех счетчиков ошибок (для "ресета" прокси).
+    """
+    unbanned_count = 0
+    current_time = time.time()
+    
+    for proxy in proxyDict.keys():
+        if proxyTemporaryBan.get(proxy, False):
+            proxyTemporaryBan[proxy] = False
+            unbanned_count += 1
+            
+        # Сбрасываем все счетчики
+        proxyErrorCount[proxy] = 0
+        proxyConnectionErrors[proxy] = 0
+        proxyBlockedTime[proxy] = 0
+        
+        # Разблокируем прокси (ставим время блокировки в прошлое)
+        proxyDict[proxy] = current_time - 1
+    
+    logging.info(f'Unbanned {unbanned_count} proxies and reset all error counters')
+    return unbanned_count
 
 headers = [
     {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.90 Safari/537.36"},
