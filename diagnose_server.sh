@@ -95,21 +95,33 @@ echo "==========================================================================
 echo "АНАЛИЗ:"
 echo "================================================================================="
 echo
-# Проверяем, что переменные - числа
-if [ -n "$success" ] && [ -n "$captcha" ] && [ "$success" -eq "0" ] && [ "$captcha" -gt "5" ] 2>/dev/null; then
-    echo "[CRITICAL] Проблема: Все прокси возвращают CAPTCHA!"
-    echo "   - CIAN агрессивно блокирует прокси"
-    echo "   - Нужны более качественные прокси или увеличение задержек"
-    echo "   - Статистика: $captcha CAPTCHA, $success успешных добавлений"
+# Проверяем, что переменные - числа (используем только числовые проверки)
+if [ -n "$success" ] && [ -n "$captcha" ]; then
+    success_num=$(echo "$success" | tr -d '[:space:]' | head -1)
+    captcha_num=$(echo "$captcha" | tr -d '[:space:]' | head -1)
+    
+    if [ "$success_num" -eq "0" ] 2>/dev/null && [ "$captcha_num" -gt "5" ] 2>/dev/null; then
+        echo "[CRITICAL] Проблема: Все прокси возвращают CAPTCHA!"
+        echo "   - CIAN агрессивно блокирует прокси"
+        echo "   - Нужны более качественные прокси или увеличение задержек"
+        echo "   - Статистика: $captcha_num CAPTCHA, $success_num успешных добавлений"
+    fi
+    
+    if [ "$captcha_num" -gt "100" ] 2>/dev/null; then
+        echo "[CRITICAL] Очень много CAPTCHA ($captcha_num за последние 500 строк)"
+        echo "   - Все прокси заблокированы CIAN"
+        echo "   - Рекомендуется: увеличить задержки или заменить прокси"
+    fi
 fi
-if [ -n "$status_403" ] && [ -n "$status_200" ] && [ "$status_403" -gt "$status_200" ] 2>/dev/null; then
-    echo "[WARN] Больше 403 ошибок ($status_403), чем успешных запросов ($status_200)"
-    echo "   - CIAN блокирует большинство запросов"
-fi
-if [ -n "$captcha" ] && [ "$captcha" -gt "100" ] 2>/dev/null; then
-    echo "[CRITICAL] Очень много CAPTCHA ($captcha за последние 500 строк)"
-    echo "   - Все прокси заблокированы CIAN"
-    echo "   - Рекомендуется: увеличить задержки или заменить прокси"
+
+if [ -n "$status_403" ] && [ -n "$status_200" ]; then
+    status_403_num=$(echo "$status_403" | tr -d '[:space:]' | head -1)
+    status_200_num=$(echo "$status_200" | tr -d '[:space:]' | head -1)
+    
+    if [ "$status_403_num" -gt "$status_200_num" ] 2>/dev/null; then
+        echo "[WARN] Больше 403 ошибок ($status_403_num), чем успешных запросов ($status_200_num)"
+        echo "   - CIAN блокирует большинство запросов"
+    fi
 fi
 echo
 
