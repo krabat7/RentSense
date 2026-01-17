@@ -1,0 +1,151 @@
+2026-01-08 00:00:35 | INFO: Requests time  = 0.67
+2026-01-08 00:00:59 | INFO: Requests time http://gF5CdZ3tVh:WBF5P4a7uW@46.161.29.212:36095 = 0.83
+2026-01-08 00:00:59 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:00:59 | INFO: Requests time http://gPrh7mayd7:cDs82GsH8e@46.161.29.91:31638 = 0.74
+2026-01-08 00:00:59 | ERROR: GetResponse Page 311739319 | Retry: 4 | 403
+2026-01-08 00:00:59 | INFO: No available proxies, waiting 179.26 seconds
+2026-01-08 00:04:00 | INFO: Requests time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 0.98
+2026-01-08 00:39:11 | INFO: Playwright time http://gF5CdZ3tVh:WBF5P4a7uW@46.161.29.212:36095 = 8.43
+2026-01-08 00:39:11 | ERROR: Recjson not match
+2026-01-08 00:40:07 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 34.78
+2026-01-08 00:40:07 | WARNING: Captcha detected for page 311739319
+2026-01-08 00:40:11 | INFO: Playwright time http://gF5CdZ3tVh:WBF5P4a7uW@46.161.29.212:36095 = 4.00
+2026-01-08 00:40:11 | ERROR: Recjson not match
+2026-01-08 00:41:11 | ERROR: Proxy : Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://www.cian.ru/rent/flat/311739319/", waiting until "networkidle"
+
+2026-01-08 00:41:22 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 10.41
+2026-01-08 00:41:22 | WARNING: Captcha detected for page 311739319
+2026-01-08 00:41:52 | INFO: Playwright time no proxy = 11.58
+2026-01-08 00:41:52 | WARNING: Captcha detected for page 311739319
+2026-01-08 00:41:59 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 6.50
+2026-01-08 00:41:59 | WARNING: Captcha detected for page 311739319
+2026-01-08 00:42:20 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:42:27 | INFO: Playwright time no proxy = 6.90
+2026-01-08 00:43:04 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:43:13 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 9.14
+2026-01-08 00:43:49 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:43:55 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 5.70
+2026-01-08 00:43:55 | WARNING: Captcha detected for page 311739319
+2026-01-08 00:44:24 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 10.98
+2026-01-08 00:44:24 | WARNING: Captcha detected for page 311739319
+2026-01-08 00:44:25 | ERROR: GetResponse Page 311739319 | Retry: 4 | 403
+2026-01-08 00:44:52 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:45:00 | INFO: Playwright time no proxy = 7.39
+2026-01-08 00:45:18 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:45:19 | ERROR: GetResponse Page 311739319 | Retry: 4 | 403
+2026-01-08 00:45:49 | INFO: Playwright time no proxy = 9.79
+2026-01-08 00:46:13 | INFO: Playwright time no proxy = 10.67
+2026-01-08 00:46:35 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:46:44 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 9.11
+2026-01-08 00:47:03 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:47:10 | INFO: Playwright time no proxy = 6.44
+2026-01-08 00:47:10 | INFO: Apart page 311739319 is adding
+2026-01-08 00:47:10 | INFO: Insert successful
+2026-01-08 00:47:10 | INFO: Apart pages ['311739319'] is END
+2026-01-08 00:50:12 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:50:18 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 5.53
+2026-01-08 00:50:18 | WARNING: Captcha detected for page 311739319, HTML too short: 43529
+2026-01-08 00:50:39 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 10.55
+2026-01-08 00:50:40 | WARNING: Captcha detected for page 311739319, HTML too short: 43531
+2026-01-08 00:50:41 | ERROR: GetResponse Page 311739319 | Retry: 4 | 403
+2026-01-08 00:50:59 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 00:51:08 | INFO: Playwright time http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844 = 9.10
+2026-01-08 00:53:03 | INFO: Apart page 311739319 already exists
+2026-01-08 00:53:03 | INFO: Apart pages ['311739319'] is END
+2026-01-08 00:53:29 | INFO: Apart page 311739319 already exists
+2026-01-08 00:53:29 | INFO: Apart pages ['311739319'] is END
+2026-01-08 00:54:18 | INFO: Playwright time no proxy = 9.74
+2026-01-08 00:54:18 | INFO: Update successful
+2026-01-08 00:54:18 | INFO: Update successful
+2026-01-08 00:54:18 | INFO: Update successful
+2026-01-08 00:54:18 | INFO: Update successful
+2026-01-08 00:54:18 | INFO: Update successful
+2026-01-08 00:54:18 | INFO: Update successful
+2026-01-08 00:54:18 | INFO: Update successful
+2026-01-08 02:07:34 | ERROR: GetResponse Page 311739319 | Retry: 5 | 403
+2026-01-08 02:07:34 | ERROR: GetResponse Page 311739319 | Retry: 4 | 403
+2026-01-08 02:07:41 | INFO: Playwright time no proxy = 6.35
+2026-01-17 00:34:53 | INFO: Loaded 16 proxies from .env file
+2026-01-17 00:34:58 | WARNING: Could not create tables on init: (pymysql.err.OperationalError) (2003, "Can't connect to MySQL server on 'localhost' ([WinError 10061] No connection could be made because the target machine actively refused it)")
+(Background on this error at: https://sqlalche.me/e/20/e3q8). Will retry later.
+2026-01-17 00:35:03 | INFO: listPages: Starting for page=50, sort=None, rooms=None
+2026-01-17 00:35:03 | INFO: getResponse: Starting for page=50, type=0, respTry=5, sort=None, rooms=None
+2026-01-17 00:35:03 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://4D7D7f:mE9cRE@213.139.222.69:9010...
+2026-01-17 00:35:16 | INFO: Browser recreated
+2026-01-17 00:35:18 | INFO: getResponse: Status=403, time=1.24s, proxy=http://4D7D7f:mE9cRE@213.139.222.69:9010...
+2026-01-17 00:35:18 | ERROR: getResponse: Page 50 | Retry: 5 | Status: 403
+2026-01-17 00:35:18 | WARNING: getResponse: Proxy http://4D7D7f:mE9cRE@213.139.222.69:9010... blocked for 20 min (status 403)
+2026-01-17 00:35:18 | INFO: Waiting 10.7s before retry after 403
+2026-01-17 00:35:28 | INFO: getResponse: Starting for page=50, type=0, respTry=4, sort=None, rooms=None
+2026-01-17 00:35:28 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://gF5CdZ3tVh:WBF5P4a7uW@46.161.29.212:36095...
+2026-01-17 00:35:30 | INFO: getResponse: Status=403, time=1.43s, proxy=http://gF5CdZ3tVh:WBF5P4a7uW@46.161.29.212:36095...
+2026-01-17 00:35:30 | ERROR: getResponse: Page 50 | Retry: 4 | Status: 403
+2026-01-17 00:35:30 | WARNING: getResponse: Proxy http://gF5CdZ3tVh:WBF5P4a7uW@46.161.29.212:36095... blocked for 20 min (status 403)
+2026-01-17 00:35:30 | INFO: Waiting 12.9s before retry after 403
+2026-01-17 00:35:43 | INFO: getResponse: Starting for page=50, type=0, respTry=3, sort=None, rooms=None
+2026-01-17 00:35:43 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://4D7D7f:mE9cRE@213.139.223.145:9193...
+2026-01-17 00:35:44 | INFO: getResponse: Status=403, time=1.15s, proxy=http://4D7D7f:mE9cRE@213.139.223.145:9193...
+2026-01-17 00:35:44 | ERROR: getResponse: Page 50 | Retry: 3 | Status: 403
+2026-01-17 00:35:44 | WARNING: getResponse: Proxy http://4D7D7f:mE9cRE@213.139.223.145:9193... blocked for 20 min (status 403)
+2026-01-17 00:35:44 | INFO: Waiting 15.1s before retry after 403
+2026-01-17 00:35:59 | INFO: getResponse: Starting for page=50, type=0, respTry=2, sort=None, rooms=None
+2026-01-17 00:35:59 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://Tz8am3:EY5U7F@209.127.142.50:9709...
+2026-01-17 00:36:29 | ERROR: getResponse: Exception for proxy http://Tz8am3:EY5U7F@209.127.142.50:9709...: Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1", waiting until "networkidle"
+
+2026-01-17 00:36:29 | INFO: getResponse: Starting for page=50, type=0, respTry=1, sort=None, rooms=None
+2026-01-17 00:36:29 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://Tz8am3:EY5U7F@168.196.238.113:9267...
+2026-01-17 00:36:40 | INFO: getResponse: Status=200, time=10.35s, proxy=http://Tz8am3:EY5U7F@168.196.238.113:9267...
+2026-01-17 00:36:40 | ERROR: CAPTCHA detected in response content!
+2026-01-17 00:36:40 | WARNING: Blocking proxy http://Tz8am3:EY5U7F@168.196.238.113:9267... for 60 minutes due to CAPTCHA
+2026-01-17 00:36:40 | INFO: getResponse: Starting for page=50, type=0, respTry=0, sort=None, rooms=None
+2026-01-17 00:36:40 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844...
+2026-01-17 00:37:10 | ERROR: getResponse: Exception for proxy http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844...: Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1", waiting until "networkidle"
+
+2026-01-17 00:37:10 | WARNING: getResponse: No retries left after exception, returning None
+2026-01-17 00:37:10 | WARNING: listPages: getResponse returned None for page=50, sort=None, rooms=None
+2026-01-17 00:37:10 | INFO: listPages: Starting for page=50, sort=None, rooms=None
+2026-01-17 00:37:10 | INFO: getResponse: Starting for page=50, type=0, respTry=5, sort=None, rooms=None
+2026-01-17 00:37:10 | INFO: Attempting to unfreeze proxy http://Tz8am3:EY5U7F... (blocked for 59.5 min)
+2026-01-17 00:37:10 | INFO: Unfrozen 1 proxy/proxies
+2026-01-17 00:37:10 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://gPrh7mayd7:cDs82GsH8e@46.161.29.91:31638...
+2026-01-17 00:37:12 | INFO: getResponse: Status=403, time=1.44s, proxy=http://gPrh7mayd7:cDs82GsH8e@46.161.29.91:31638...
+2026-01-17 00:37:12 | ERROR: getResponse: Page 50 | Retry: 5 | Status: 403
+2026-01-17 00:37:12 | WARNING: getResponse: Proxy http://gPrh7mayd7:cDs82GsH8e@46.161.29.91:31638... blocked for 20 min (status 403)
+2026-01-17 00:37:12 | INFO: Waiting 14.3s before retry after 403
+2026-01-17 00:37:26 | INFO: getResponse: Starting for page=50, type=0, respTry=4, sort=None, rooms=None
+2026-01-17 00:37:26 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844...
+2026-01-17 00:37:57 | ERROR: getResponse: Exception for proxy http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844...: Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1", waiting until "networkidle"
+
+2026-01-17 00:37:57 | INFO: getResponse: Starting for page=50, type=0, respTry=3, sort=None, rooms=None
+2026-01-17 00:37:57 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://Tz8am3:EY5U7F@209.127.142.50:9709...
+2026-01-17 00:38:23 | INFO: getResponse: Status=200, time=24.12s, proxy=http://Tz8am3:EY5U7F@209.127.142.50:9709...
+2026-01-17 00:38:23 | ERROR: CAPTCHA detected in response content!
+2026-01-17 00:38:23 | WARNING: Blocking proxy http://Tz8am3:EY5U7F@209.127.142.50:9709... for 60 minutes due to CAPTCHA
+2026-01-17 00:38:23 | INFO: Waiting 55.8s before retry after CAPTCHA
+2026-01-17 00:39:19 | INFO: getResponse: Starting for page=50, type=0, respTry=2, sort=None, rooms=None
+2026-01-17 00:39:19 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://4D7D7f:mE9cRE@213.139.222.227:9625...
+2026-01-17 00:39:20 | INFO: getResponse: Status=403, time=1.18s, proxy=http://4D7D7f:mE9cRE@213.139.222.227:9625...
+2026-01-17 00:39:20 | ERROR: getResponse: Page 50 | Retry: 2 | Status: 403
+2026-01-17 00:39:20 | WARNING: getResponse: Proxy http://4D7D7f:mE9cRE@213.139.222.227:9625... blocked for 20 min (status 403)
+2026-01-17 00:39:20 | INFO: Waiting 17.6s before retry after 403
+2026-01-17 00:39:38 | INFO: getResponse: Starting for page=50, type=0, respTry=1, sort=None, rooms=None
+2026-01-17 00:39:38 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844...
+2026-01-17 00:40:08 | ERROR: getResponse: Exception for proxy http://Y34xbQACPJ:pQVJx66wc2@83.171.240.229:32844...: Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1", waiting until "networkidle"
+
+2026-01-17 00:40:08 | INFO: getResponse: Starting for page=50, type=0, respTry=0, sort=None, rooms=None
+2026-01-17 00:40:08 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=50&region=1..., proxy=http://Tz8am3:EY5U7F@168.196.238.113:9267...
+2026-01-17 00:40:19 | INFO: getResponse: Status=200, time=10.93s, proxy=http://Tz8am3:EY5U7F@168.196.238.113:9267...
+2026-01-17 00:40:19 | ERROR: CAPTCHA detected in response content!
+2026-01-17 00:40:19 | WARNING: Blocking proxy http://Tz8am3:EY5U7F@168.196.238.113:9267... for 60 minutes due to CAPTCHA
+2026-01-17 00:40:19 | WARNING: 2 CAPTCHA in a row for page 50, waiting 2 minutes before skipping
+2026-01-17 00:42:19 | WARNING: listPages: CAPTCHA detected for page=50, sort=None, rooms=None, skipping page

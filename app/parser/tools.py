@@ -64,38 +64,36 @@ proxyConnectionErrors = {proxy: 0 for proxy in proxyDict.keys()}
 
 # Временный бан прокси (полное исключение из ротации, даже если разблокирован)
 # Используется для "отдыха" прокси или тестирования новых прокси
-# Сохраняется в файл для синхронизации между процессами (manage_proxies.py и парсером)
+proxyTemporaryBan = {proxy: False for proxy in proxyDict.keys()}
+
+# Файл для сохранения временных банов прокси (синхронизация между процессами)
 PROXY_BANS_FILE = Path(__file__).parent.parent.parent / '.proxy_bans'
 
 def load_proxy_bans():
-    """Загружает временный бан прокси из файла"""
-    bans = {proxy: False for proxy in proxyDict.keys()}
+    """Загружает временно забаненные прокси из файла."""
+    global proxyTemporaryBan
     if PROXY_BANS_FILE.exists():
         try:
             with open(PROXY_BANS_FILE, 'r', encoding='utf-8') as f:
-                banned_proxies = [line.strip() for line in f if line.strip()]
-                for proxy in proxyDict.keys():
-                    if proxy in banned_proxies:
-                        bans[proxy] = True
-            if banned_proxies:
-                logging.info(f'Loaded {len(banned_proxies)} temporarily banned proxies from {PROXY_BANS_FILE}')
+                banned_proxies = {line.strip() for line in f if line.strip()}
+            for proxy in proxyDict.keys():
+                proxyTemporaryBan[proxy] = proxy in banned_proxies
+            logging.info(f"Loaded {len(banned_proxies)} temporary bans from {PROXY_BANS_FILE}")
         except Exception as e:
-            logging.warning(f'Failed to load proxy bans from {PROXY_BANS_FILE}: {e}')
-    return bans
+            logging.error(f"Error loading proxy bans from file {PROXY_BANS_FILE}: {e}")
+    else:
+        logging.debug(f"Proxy bans file {PROXY_BANS_FILE} not found, no temporary bans loaded.")
 
-def save_proxy_bans(bans):
-    """Сохраняет временный бан прокси в файл"""
+def save_proxy_bans():
+    """Сохраняет временно забаненные прокси в файл."""
     try:
-        banned_proxies = [proxy for proxy, is_banned in bans.items() if is_banned and proxy != '']
         with open(PROXY_BANS_FILE, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(banned_proxies) + '\n')
-        return True
+            for proxy, is_banned in proxyTemporaryBan.items():
+                if is_banned:
+                    f.write(f"{proxy}\n")
+        logging.debug(f"Saved {sum(1 for v in proxyTemporaryBan.values() if v)} temporary bans to {PROXY_BANS_FILE}")
     except Exception as e:
-        logging.error(f'Failed to save proxy bans to {PROXY_BANS_FILE}: {e}')
-        return False
-
-# Загружаем временные баны из файла при инициализации
-proxyTemporaryBan = load_proxy_bans()
+        logging.error(f"Error saving proxy bans to file {PROXY_BANS_FILE}: {e}")
 
 def check_and_unfreeze_proxies():
     """
@@ -135,6 +133,7 @@ def ban_proxies_by_pattern(pattern='', exclude_patterns=None):
     Временно блокирует прокси по паттерну (например, по части IP или имени).
     exclude_patterns - список паттернов для исключения (например, новые прокси)
     """
+    load_proxy_bans()  # Загружаем текущие баны перед изменением
     banned_count = 0
     for proxy in proxyDict.keys():
         if proxy == '':
@@ -148,9 +147,7 @@ def ban_proxies_by_pattern(pattern='', exclude_patterns=None):
             proxyTemporaryBan[proxy] = True
             banned_count += 1
             logging.info(f'Temporarily banned proxy: {proxy[:50]}...')
-    
-    # Сохраняем баны в файл
-    save_proxy_bans(proxyTemporaryBan)
+    save_proxy_bans()  # Сохраняем изменения
     logging.info(f'Banned {banned_count} proxies by pattern "{pattern}"')
     return banned_count
 
@@ -159,6 +156,7 @@ def unban_all_proxies():
     """
     Разбан всех прокси и сброс всех счетчиков ошибок (для "ресета" прокси).
     """
+    load_proxy_bans()  # Загружаем текущие баны перед изменением
     unbanned_count = 0
     current_time = time.time()
     
@@ -175,8 +173,7 @@ def unban_all_proxies():
         # Разблокируем прокси (ставим время блокировки в прошлое)
         proxyDict[proxy] = current_time - 1
     
-    # Сохраняем изменения в файл (все разбанены)
-    save_proxy_bans(proxyTemporaryBan)
+    save_proxy_bans()  # Сохраняем изменения
     logging.info(f'Unbanned {unbanned_count} proxies and reset all error counters')
     return unbanned_count
 

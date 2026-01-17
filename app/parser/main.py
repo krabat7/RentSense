@@ -6,7 +6,7 @@ import json
 from playwright.sync_api import sync_playwright
 from .database import DB, model_classes
 from .pagecheck import pagecheck
-from .tools import headers, proxyDict, proxyBlockedTime, proxyErrorCount, proxyConnectionErrors, proxyTemporaryBan, check_and_unfreeze_proxies, recjson
+from .tools import headers, proxyDict, proxyBlockedTime, proxyErrorCount, proxyConnectionErrors, proxyTemporaryBan, check_and_unfreeze_proxies, load_proxy_bans, recjson
 
 URL = 'https://www.cian.ru'
 
@@ -50,10 +50,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
     
     if respTry == 5:
         check_and_unfreeze_proxies()
-        # Перезагружаем временные баны из файла (на случай изменений через manage_proxies.py)
-        from .tools import load_proxy_bans
-        global proxyTemporaryBan
-        proxyTemporaryBan = load_proxy_bans()
+        load_proxy_bans()  # Загружаем актуальные баны из файла
         # Сбрасываем счетчик CAPTCHA для новой страницы
         _captcha_count[page] = 0
     
