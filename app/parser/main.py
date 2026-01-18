@@ -28,8 +28,19 @@ def _get_browser():
             except:
                 pass
         _playwright = sync_playwright().start()
-        _browser = _playwright.chromium.launch(headless=True)
-        logging.info('Browser recreated')
+        # Добавляем аргументы для обхода детектирования бота
+        _browser = _playwright.chromium.launch(
+            headless=True,
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
+            ]
+        )
+        logging.info('Browser recreated with stealth settings')
     return _browser
 
 def close_browser():
@@ -171,11 +182,14 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         browser = _get_browser()
         context_options = {}
         
-        # Устанавливаем User-Agent
+        # Устанавливаем User-Agent и другие заголовки
         if headers:
-            user_agent = random.choice(headers).get('User-Agent')
-            if user_agent:
-                context_options['user_agent'] = user_agent
+            selected_headers = random.choice(headers)
+            context_options['user_agent'] = selected_headers.get('User-Agent')
+            # Устанавливаем дополнительные заголовки
+            extra_headers = {k: v for k, v in selected_headers.items() if k != 'User-Agent'}
+            if extra_headers:
+                context_options['extra_http_headers'] = extra_headers
         
         # Устанавливаем прокси с правильной обработкой аутентификации
         if proxy:
@@ -212,8 +226,22 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 # и увеличиваем таймаут до 90 секунд (прокси могут быть медленными)
                 response = page_obj.goto(url, wait_until='load', timeout=90000)
             else:  # Список страниц
-                response = page_obj.goto(url, wait_until='networkidle', timeout=30000)
+                # Используем 'domcontentloaded' вместо 'networkidle' для более быстрой загрузки
+                # networkidle слишком агрессивен и вызывает подозрения у Cian
+                response = page_obj.goto(url, wait_until='domcontentloaded', timeout=30000)
             elapsed = time.time() - start_time
+            
+            # Имитация человеческого поведения: пауза после загрузки страницы
+            human_delay = random.uniform(1.5, 3.5)
+            time.sleep(human_delay)
+            
+            # Случайная прокрутка страницы для имитации человека
+            try:
+                scroll_height = random.randint(300, 1000)
+                page_obj.evaluate(f"window.scrollBy(0, {scroll_height})")
+                time.sleep(random.uniform(0.5, 1.5))
+            except:
+                pass  # Игнорируем ошибки прокрутки
         except Exception as e:
             # Закрываем контекст и страницу при ошибке создания
             if page_obj:
@@ -252,18 +280,18 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 # Блокируем прокси при ошибках
                 if status in (403, 429):
-                    # Увеличено время блокировки для более консервативного подхода
-                    block_time = 20 * 60  # 20 минут блокировки (увеличено с 10)
+                    # Умеренная блокировка: 10 минут для первой ошибки
+                    block_time = 10 * 60  # 10 минут блокировки
                     proxyDict[proxy] = time.time() + block_time
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
                         proxyBlockedTime[proxy] = time.time()
-                        block_time = 30 * 60  # 30 минут при повторных ошибках (увеличено с 15)
+                        block_time = 15 * 60  # 15 минут при повторных ошибках
                         proxyDict[proxy] = time.time() + block_time
                     logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
                     # Делаем паузу перед следующей попыткой после 403/429
                     if respTry > 1:
-                        delay = random.uniform(10, 20)  # 10-20 секунд пауза
+                        delay = random.uniform(15, 30)  # 15-30 секунд пауза
                         logging.info(f'Waiting {delay:.1f}s before retry after {status}')
                         time.sleep(delay)
                 elif status == 404:
@@ -330,9 +358,10 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
             
             # Обновляем время блокировки прокси после успешного запроса
-            # Блокируем прокси на 2 минуты после успешного запроса, чтобы дать ему "отдохнуть"
+            # Блокируем прокси на 20-30 секунд после успешного запроса, чтобы дать ему "отдохнуть"
             # Это снижает вероятность CAPTCHA при повторном использовании
-            proxyDict[proxy] = time.time() + (2 * 60)  # 2 минуты блокировки прокси после успешного запроса
+            block_delay = random.uniform(20, 30)
+            proxyDict[proxy] = time.time() + block_delay  # 20-30 секунд блокировки прокси
             proxyErrorCount[proxy] = 0  # Сбрасываем счетчик ошибок
             # Сбрасываем счетчик ошибок подключения при успешном запросе (прокси работает!)
             proxyConnectionErrors[proxy] = 0
@@ -340,9 +369,9 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if page in _captcha_count:
                 _captcha_count[page] = 0
             
-            # Добавляем случайную задержку между запросами (5-15 секунд)
-            # Это помогает избежать детекции автоматизации
-            delay = random.uniform(5, 15)
+            # Добавляем случайную задержку между запросами (30-60 секунд)
+            # Увеличенная задержка для более естественного поведения
+            delay = random.uniform(30, 60)
             logging.info(f'getResponse: Success, content length={len(content)}, waiting {delay:.1f}s before next request')
             time.sleep(delay)
             
