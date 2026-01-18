@@ -8,10 +8,11 @@ from pathlib import Path
 
 # Новые прокси от пользователя (в формате host:port:username:password)
 new_proxies = [
-    "31.44.190.147:9657:4MfBTo:mgCBFh",
-    "194.67.219.3:9623:4MfBTo:mgCBFh",
-    "194.28.210.85:9963:4MfBTo:mgCBFh",
-    "194.28.208.50:9743:4MfBTo:mgCBFh",
+    "158.46.182.34:8000:PT9p16:nNmkU8",   # Армения
+    "91.233.20.141:8000:MFDsV2:geHwTP",   # Таджикистан
+    "46.19.71.145:8000:9D1pZg:a5YoGL",    # Казахстан
+    "147.45.86.232:8000:ftXS76:q5P4rE",   # Беларусь
+    "195.64.101.45:8000:f0muLE:KP4hV2",   # Россия
 ]
 
 def convert_proxy_format(proxy_str):
@@ -99,9 +100,9 @@ if __name__ == "__main__":
         print("=" * 80)
         print("1. Перезапустите парсер: docker-compose -f docker-compose.prod.yml restart parser")
         print("2. Временно забаните старые прокси (оставив только новые):")
-        print("   python manage_proxies.py ban 31.44 194.67.219 194.28.210 194.28.208")
+        print("   python3 manage_proxies.py ban 158.46.182 91.233.20 46.19.71 147.45.86 195.64.101")
         print("3. Через несколько часов разбаньте все:")
-        print("   python manage_proxies.py reset")
+        print("   python3 manage_proxies.py reset")
         print()
     else:
         sys.exit(1)

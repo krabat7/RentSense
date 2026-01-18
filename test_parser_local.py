@@ -150,6 +150,32 @@ def main():
     print(f"LOCAL PARSER TEST - Step by step verification")
     print(f"{'#'*80}\n")
     
+    # Временно блокируем старые прокси для теста только новых
+    print(f"\n{'='*80}")
+    print(f"BLOCKING OLD PROXIES FOR TEST")
+    print(f"{'='*80}")
+    
+    # Паттерны новых прокси (IP адреса)
+    new_proxy_patterns = ['158.46.182', '91.233.20', '46.19.71', '147.45.86', '195.64.101']
+    
+    # Блокируем все старые прокси
+    load_proxy_bans()
+    banned_count = 0
+    for proxy in proxyDict.keys():
+        if proxy == '':
+            continue
+        # Если прокси НЕ содержит паттерн новых прокси - блокируем
+        if not any(pattern in proxy for pattern in new_proxy_patterns):
+            proxyTemporaryBan[proxy] = True
+            banned_count += 1
+        else:
+            # Разблокируем новые прокси на случай если они были заблокированы
+            proxyTemporaryBan[proxy] = False
+    
+    # Сохраняем временные баны (они не будут сохранены в файл, только в память)
+    print(f"[INFO] Temporarily banned {banned_count} old proxies for testing")
+    print(f"[INFO] Using only new proxies: {[p for p in proxyDict.keys() if any(pat in p for pat in new_proxy_patterns) and p != '']}")
+    
     # Шаг 1: Проверка статуса
     check_proxy_status()
     check_database()
