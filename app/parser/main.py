@@ -171,11 +171,14 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         browser = _get_browser()
         context_options = {}
         
-        # Устанавливаем User-Agent
+        # Устанавливаем User-Agent и другие заголовки
         if headers:
-            user_agent = random.choice(headers).get('User-Agent')
-            if user_agent:
-                context_options['user_agent'] = user_agent
+            selected_headers = random.choice(headers)
+            context_options['user_agent'] = selected_headers.get('User-Agent')
+            # Устанавливаем дополнительные заголовки
+            extra_headers = {k: v for k, v in selected_headers.items() if k != 'User-Agent'}
+            if extra_headers:
+                context_options['extra_http_headers'] = extra_headers
         
         # Устанавливаем прокси с правильной обработкой аутентификации
         if proxy:
@@ -330,9 +333,8 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
             
             # Обновляем время блокировки прокси после успешного запроса
-            # Блокируем прокси на 2 минуты после успешного запроса, чтобы дать ему "отдохнуть"
-            # Это снижает вероятность CAPTCHA при повторном использовании
-            proxyDict[proxy] = time.time() + (2 * 60)  # 2 минуты блокировки прокси после успешного запроса
+            # НЕ блокируем прокси после успешного запроса - пусть ротируется естественно
+            proxyDict[proxy] = time.time() + 0  # Не блокируем прокси
             proxyErrorCount[proxy] = 0  # Сбрасываем счетчик ошибок
             # Сбрасываем счетчик ошибок подключения при успешном запросе (прокси работает!)
             proxyConnectionErrors[proxy] = 0
@@ -340,9 +342,9 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if page in _captcha_count:
                 _captcha_count[page] = 0
             
-            # Добавляем случайную задержку между запросами (5-15 секунд)
+            # Добавляем случайную задержку между запросами (4-10 секунд, как советует дипсик)
             # Это помогает избежать детекции автоматизации
-            delay = random.uniform(5, 15)
+            delay = random.uniform(4, 10)
             logging.info(f'getResponse: Success, content length={len(content)}, waiting {delay:.1f}s before next request')
             time.sleep(delay)
             
