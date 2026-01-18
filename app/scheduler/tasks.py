@@ -69,16 +69,31 @@ async def parsing(page=1):
                 logging.info(f'End of data reached for room={room}, sort={sort}, page={current_page}')
                 break
             
-            if not data:
+            # Обрабатываем различные возвращаемые значения apartPage
+            if data is None:
+                # Критическая ошибка - увеличиваем счетчик ошибок
                 errors += 1
                 logging.info(f'Error parse count: {errors} for page={current_page}, room={room}, sort={sort}')
                 if errors >= 20:  # Уменьшено с 30 до 20
                     logging.info(f'Error limit {errors} reached, stopping')
                     break
-            else:
-                # Если данные успешно обработаны, считаем это успешным парсингом
+            elif data == 'SKIPPED':
+                # Все объявления пропущены (CAPTCHA/ошибки) - это тоже ошибка для парсинга
+                errors += 1
+                logging.warning(f'All offers skipped (CAPTCHA/errors) for page={current_page}, room={room}, sort={sort}, error count: {errors}')
+                if errors >= 20:
+                    logging.info(f'Error limit {errors} reached, stopping')
+                    break
+            elif data == 'OK':
+                # Новые объявления добавлены - успех
                 errors = 0
                 new_offers_count += 1
+            elif data in ['EXISTING', 'FILTERED']:
+                # Все объявления уже в БД или отфильтрованы - это не ошибка, но и не новый контент
+                # Не увеличиваем счетчик ошибок, так как парсинг технически успешен
+                errors = 0
+                if data == 'EXISTING':
+                    existing_offers_count += 1
             
             current_page += 1
             
