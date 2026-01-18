@@ -42,10 +42,15 @@ logging.getLogger().addHandler(console_handler)
 # Загружаем .env из корня проекта
 env_path = Path(__file__).parent.parent.parent / '.env'
 env = dotenv_values(env_path)
-proxyDict = {
-    proxy: 0.0
-    for proxy in (env.get(f'PROXY{i}') for i in range(1, 31)) if proxy  # Поддержка до PROXY30
-}
+proxyDict = {}
+ i = 1
+ while True:
+     proxy = env.get(f'PROXY{i}')
+     if proxy:
+         proxyDict[proxy] = 0.0
+         i += 1
+     else:
+         break  # Прекращаем, когда больше нет прокси
 proxyDict[''] = 0.0
 
 # Логируем количество загруженных прокси
