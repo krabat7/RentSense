@@ -736,3 +736,63 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
     return 'OK'
 
 
+
+    # Если все объявления отфильтрованы, возвращаем 'FILTERED'
+    if filtered_count > 0 and pages_cnt == 0:
+        logging.info(f"All {filtered_count} offers were filtered out")
+        return 'FILTERED'
+    
+    # Если все объявления пропущены (CAPTCHA/ошибки), возвращаем 'SKIPPED'
+    if skipped_count > 0 and pages_cnt == 0:
+        logging.warning(f"All {skipped_count} offers were skipped due to errors/CAPTCHA")
+        return 'SKIPPED'
+    
+    # Если список был пуст или ничего не обработано
+    if len(pagesList) == 0:
+        logging.warning("Empty pagesList passed to apartPage")
+        return None
+    
+    # По умолчанию возвращаем 'OK' для обработанных страниц
+    return 'OK'
+
+
+
+    # Если все объявления отфильтрованы, возвращаем 'FILTERED'
+    if filtered_count > 0 and pages_cnt == 0:
+        logging.info(f"All {filtered_count} offers were filtered out")
+        return 'FILTERED'
+    
+    # Если все объявления пропущены (CAPTCHA/ошибки), возвращаем 'SKIPPED'
+    if skipped_count > 0 and pages_cnt == 0:
+        logging.warning(f"All {skipped_count} offers were skipped due to errors/CAPTCHA")
+        return 'SKIPPED'
+    
+    # Если список был пуст или ничего не обработано
+    if len(pagesList) == 0:
+        logging.warning("Empty pagesList passed to apartPage")
+        return None
+    
+    # По умолчанию возвращаем 'OK' для обработанных страниц
+    return 'OK'
+
+
+
+    # Если все объявления отфильтрованы, возвращаем 'FILTERED'
+    if filtered_count > 0 and pages_cnt == 0:
+        logging.info(f"All {filtered_count} offers were filtered out")
+        return 'FILTERED'
+    
+    # Если все объявления пропущены (CAPTCHA/ошибки), возвращаем 'SKIPPED'
+    if skipped_count > 0 and pages_cnt == 0:
+        logging.warning(f"All {skipped_count} offers were skipped due to errors/CAPTCHA")
+        return 'SKIPPED'
+    
+    # Если список был пуст или ничего не обработано
+    if len(pagesList) == 0:
+        logging.warning("Empty pagesList passed to apartPage")
+        return None
+    
+    # По умолчанию возвращаем 'OK' для обработанных страниц
+    return 'OK'
+
+

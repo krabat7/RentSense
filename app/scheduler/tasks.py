@@ -132,3 +132,48 @@ async def parsing(page=1):
     # благодаря улучшенной логике выбора и автоматической разморозке
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(executor, theard)
+
+                    return
+                
+                logging.info(f'Starting parsing: room={room or "all"}, sort={sort or "default"}, page=1 (elapsed: {elapsed:.1f}s)')
+                process_page(1, sort, room)  # Всегда начинаем с первой страницы
+                logging.info(f'Finished: room={room or "all"}, sort={sort or "default"}')
+        
+        total_time = time.time() - start_time
+        logging.info(f'Все комбинации обработаны за {total_time:.1f} секунд ({total_time / 60:.1f} минут)')
+
+    # Используем executor для изоляции синхронного Playwright кода
+    # Обрабатываем последовательно, но прокси будут использоваться эффективно
+    # благодаря улучшенной логике выбора и автоматической разморозке
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(executor, theard)
+
+                    return
+                
+                logging.info(f'Starting parsing: room={room or "all"}, sort={sort or "default"}, page=1 (elapsed: {elapsed:.1f}s)')
+                process_page(1, sort, room)  # Всегда начинаем с первой страницы
+                logging.info(f'Finished: room={room or "all"}, sort={sort or "default"}')
+        
+        total_time = time.time() - start_time
+        logging.info(f'Все комбинации обработаны за {total_time:.1f} секунд ({total_time / 60:.1f} минут)')
+
+    # Используем executor для изоляции синхронного Playwright кода
+    # Обрабатываем последовательно, но прокси будут использоваться эффективно
+    # благодаря улучшенной логике выбора и автоматической разморозке
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(executor, theard)
+
+                    return
+                
+                logging.info(f'Starting parsing: room={room or "all"}, sort={sort or "default"}, page=1 (elapsed: {elapsed:.1f}s)')
+                process_page(1, sort, room)  # Всегда начинаем с первой страницы
+                logging.info(f'Finished: room={room or "all"}, sort={sort or "default"}')
+        
+        total_time = time.time() - start_time
+        logging.info(f'Все комбинации обработаны за {total_time:.1f} секунд ({total_time / 60:.1f} минут)')
+
+    # Используем executor для изоляции синхронного Playwright кода
+    # Обрабатываем последовательно, но прокси будут использоваться эффективно
+    # благодаря улучшенной логике выбора и автоматической разморозке
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(executor, theard)
