@@ -292,10 +292,14 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if content and ('captcha' in content.lower() or 'капча' in content.lower() or 'recaptcha' in content.lower()):
                 logging.error("CAPTCHA detected in response content!")
                 if proxy:
-                    logging.warning(f"Blocking proxy {proxy[:50]}... for 60 minutes due to CAPTCHA")
-                    proxyDict[proxy] = time.time() + (60 * 60)  # 60 минут блокировки (увеличено с 30)
-                    proxyBlockedTime[proxy] = time.time()
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                    if proxyErrorCount[proxy] >= 2:
+                        block_time = 30 * 60
+                    else:
+                        block_time = 20 * 60
+                    proxyDict[proxy] = time.time() + block_time
+                    proxyBlockedTime[proxy] = time.time()
+                    logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} min due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
                 
                 # Увеличиваем счетчик CAPTCHA для этой страницы
                 _captcha_count[page] = _captcha_count.get(page, 0) + 1
