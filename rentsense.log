@@ -12730,3 +12730,16 @@ playwright._impl._errors.TargetClosedError: Target page, context or browser has 
 2026-01-18 17:13:59 | INFO: Waiting 33.1s before retry after CAPTCHA
 2026-01-18 17:14:32 | INFO: getResponse: Starting for page=6, type=0, respTry=3, sort=, rooms=
 2026-01-18 17:14:32 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=6&region=1..., proxy=http://dBJDq9:kjwyCA@23.229.42.223:9498...
+2026-01-18 17:15:02 | ERROR: getResponse: Exception for proxy http://dBJDq9:kjwyCA@23.229.42.223:9498...: Timeout 30000ms exceeded.
+2026-01-18 17:15:02 | INFO: getResponse: Starting for page=6, type=0, respTry=2, sort=, rooms=
+2026-01-18 17:15:02 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=6&region=1..., proxy=http://SeHvwxXK9g:Pr795Xreg6@46.161.31.185:38432...
+2026-01-18 17:15:04 | INFO: getResponse: Status=403, time=1.54s, proxy=http://SeHvwxXK9g:Pr795Xreg6@46.161.31.185:38432...
+2026-01-18 17:15:04 | ERROR: getResponse: Page 6 | Retry: 2 | Status: 403
+2026-01-18 17:15:04 | WARNING: getResponse: Proxy http://SeHvwxXK9g:Pr795Xreg6@46.161.31.185:38432... blocked for 30 min (status 403)
+2026-01-18 17:15:04 | INFO: Waiting 13.4s before retry after 403
+2026-01-18 17:15:17 | INFO: getResponse: Starting for page=6, type=0, respTry=1, sort=, rooms=
+2026-01-18 17:15:17 | INFO: getResponse: URL=https://www.cian.ru/cat.php?deal_type=rent&offer_type=flat&p=6&region=1..., proxy=http://okJ0KF:9LmuSc@194.67.219.124:9425...
+2026-01-18 17:15:36 | INFO: getResponse: Status=200, time=19.11s, proxy=http://okJ0KF:9LmuSc@194.67.219.124:9425...
+2026-01-18 17:15:37 | ERROR: CAPTCHA detected in response content!
+2026-01-18 17:15:37 | WARNING: Blocking proxy http://okJ0KF:9LmuSc@194.67.219.124:9425... for 60 minutes due to CAPTCHA
+2026-01-18 17:15:37 | WARNING: 2 CAPTCHA in a row for page 6, waiting 2 minutes before skipping
