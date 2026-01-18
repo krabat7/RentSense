@@ -32,21 +32,21 @@ def test_list_pages(page=1, sort=None, rooms=None):
     result = listPages(page, sort, rooms)
     
     if result == 'END':
-        print("❌ FAILED: listPages returned 'END' - страница недоступна")
+        print("[FAILED] listPages returned 'END' - страница недоступна")
         return False
     elif result is None:
-        print("❌ FAILED: listPages returned None - критическая ошибка")
+        print("[FAILED] listPages returned None - критическая ошибка")
         return False
     elif isinstance(result, list):
         if len(result) == 0:
-            print(f"⚠️  WARNING: listPages returned empty list (0 объявлений)")
+            print(f"[WARNING] listPages returned empty list (0 объявлений)")
             return 'empty'
         else:
-            print(f"✅ SUCCESS: listPages returned {len(result)} объявлений")
+            print(f"[SUCCESS] listPages returned {len(result)} объявлений")
             print(f"   First 5 IDs: {result[:5]}")
             return result
     else:
-        print(f"❌ FAILED: listPages returned unexpected type: {type(result)}")
+        print(f"[FAILED] listPages returned unexpected type: {type(result)}")
         return False
 
 def test_apart_page(page_ids, max_test=3):
@@ -56,7 +56,7 @@ def test_apart_page(page_ids, max_test=3):
     print(f"{'='*80}")
     
     if not page_ids:
-        print("❌ SKIPPED: Empty page_ids list")
+        print("[SKIPPED] Empty page_ids list")
         return None
     
     test_ids = page_ids[:max_test]
@@ -65,22 +65,22 @@ def test_apart_page(page_ids, max_test=3):
     result = apartPage(test_ids, dbinsert=True)
     
     if result == 'OK':
-        print(f"✅ SUCCESS: apartPage returned 'OK' - объявления обработаны/добавлены")
+        print(f"[SUCCESS] apartPage returned 'OK' - объявления обработаны/добавлены")
         return 'OK'
     elif result == 'EXISTING':
-        print(f"⚠️  INFO: apartPage returned 'EXISTING' - все объявления уже в БД")
+        print(f"[INFO] apartPage returned 'EXISTING' - все объявления уже в БД")
         return 'EXISTING'
     elif result == 'FILTERED':
-        print(f"⚠️  INFO: apartPage returned 'FILTERED' - все объявления отфильтрованы")
+        print(f"[INFO] apartPage returned 'FILTERED' - все объявления отфильтрованы")
         return 'FILTERED'
     elif result == 'SKIPPED':
-        print(f"❌ WARNING: apartPage returned 'SKIPPED' - все объявления пропущены (CAPTCHA/ошибки)")
+        print(f"[WARNING] apartPage returned 'SKIPPED' - все объявления пропущены (CAPTCHA/ошибки)")
         return 'SKIPPED'
     elif result is None:
-        print(f"❌ FAILED: apartPage returned None - ошибка обработки")
+        print(f"[FAILED] apartPage returned None - ошибка обработки")
         return None
     else:
-        print(f"⚠️  UNKNOWN: apartPage returned unexpected value: {result}")
+        print(f"[UNKNOWN] apartPage returned unexpected value: {result}")
         return result
 
 def check_proxy_status():
@@ -116,10 +116,11 @@ def check_database():
         from sqlalchemy import func
         
         # Проверяем подключение
-        with DB.session() as session:
+        session = DB.Session()
+        try:
             # Подсчитываем количество объявлений
             count = session.query(func.count(model_classes['offers'].cian_id)).scalar()
-            print(f"✅ Database connection: OK")
+            print(f"[OK] Database connection: OK")
             print(f"Total offers in database: {count}")
             
             # Проверяем последние добавленные объявления
@@ -132,10 +133,13 @@ def check_database():
                 for offer in recent:
                     print(f"  - {offer.cian_id}")
             else:
-                print("⚠️  No offers in database")
+                print("[WARNING] No offers in database")
+        finally:
+            session.close()
                 
     except Exception as e:
-        print(f"❌ Database connection error: {e}")
+        print(f"[ERROR] Database connection error: {e}")
+        print(f"  Note: Database may not be running locally. This is OK for testing parser logic.")
         return False
     
     return True
@@ -158,7 +162,7 @@ def main():
     page_ids = test_list_pages(page=1, sort=None, rooms=None)
     
     if not page_ids:
-        print("\n❌ CRITICAL: Cannot get list of offers. Parser will not work.")
+        print("\n[CRITICAL] Cannot get list of offers. Parser will not work.")
         print("   Possible reasons:")
         print("   1. All proxies are blocked (403/CAPTCHA)")
         print("   2. Network connection issues")
@@ -166,10 +170,10 @@ def main():
         return 1
     
     if page_ids == 'empty':
-        print("\n⚠️  WARNING: Empty page list. Trying next page...")
+        print("\n[WARNING] Empty page list. Trying next page...")
         page_ids = test_list_pages(page=2, sort=None, rooms=None)
         if not page_ids or page_ids == 'empty':
-            print("\n❌ CRITICAL: Cannot get non-empty list of offers.")
+            print("\n[CRITICAL] Cannot get non-empty list of offers.")
             return 1
     
     # Шаг 3: Тест парсинга объявлений
@@ -185,20 +189,20 @@ def main():
     print(f"{'='*80}")
     
     if page_ids and isinstance(page_ids, list) and len(page_ids) > 0:
-        print(f"✅ listPages: OK ({len(page_ids)} offers found)")
+        print(f"[OK] listPages: OK ({len(page_ids)} offers found)")
     else:
-        print(f"❌ listPages: FAILED")
+        print(f"[FAILED] listPages: FAILED")
     
     if apart_result == 'OK':
-        print(f"✅ apartPage: OK (new offers added)")
+        print(f"[OK] apartPage: OK (new offers added)")
     elif apart_result == 'EXISTING':
-        print(f"⚠️  apartPage: All offers already exist (parser works, but nothing new)")
+        print(f"[INFO] apartPage: All offers already exist (parser works, but nothing new)")
     elif apart_result == 'FILTERED':
-        print(f"⚠️  apartPage: All offers filtered out")
+        print(f"[INFO] apartPage: All offers filtered out")
     elif apart_result == 'SKIPPED':
-        print(f"❌ apartPage: All offers skipped (CAPTCHA/errors)")
+        print(f"[WARNING] apartPage: All offers skipped (CAPTCHA/errors)")
     else:
-        print(f"❌ apartPage: FAILED")
+        print(f"[FAILED] apartPage: FAILED")
     
     # Рекомендации
     print(f"\n{'='*80}")
@@ -206,21 +210,21 @@ def main():
     print(f"{'='*80}")
     
     if not page_ids or (isinstance(page_ids, list) and len(page_ids) == 0):
-        print("❌ DO NOT DEPLOY: listPages is not working")
+        print("[DO NOT DEPLOY] listPages is not working")
         print("   - Check proxy status")
         print("   - Check network connectivity")
         print("   - All proxies may be blocked by CIAN")
     elif apart_result == 'SKIPPED':
-        print("⚠️  RISKY: apartPage is skipping all offers due to CAPTCHA/errors")
+        print("[RISKY] apartPage is skipping all offers due to CAPTCHA/errors")
         print("   - Consider waiting for proxy cooldown")
         print("   - Check if proxies are working")
     elif apart_result == 'OK':
-        print("✅ SAFE TO DEPLOY: Parser is working correctly")
+        print("[SAFE TO DEPLOY] Parser is working correctly")
     elif apart_result == 'EXISTING':
-        print("✅ SAFE TO DEPLOY: Parser works, but no new offers found")
+        print("[SAFE TO DEPLOY] Parser works, but no new offers found")
         print("   - This is normal if all offers are already in database")
     else:
-        print("⚠️  REVIEW NEEDED: Unexpected results, check logs")
+        print("[REVIEW NEEDED] Unexpected results, check logs")
     
     return 0 if (page_ids and apart_result in ['OK', 'EXISTING']) else 1
 
