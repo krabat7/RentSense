@@ -3,6 +3,7 @@ catboost==1.2.8
 fastapi==0.115.7
 httpx==0.28.1
 pandas==2.2.3
+numpy<2  # Ограничение для совместимости с matplotlib, seaborn и другими библиотеками
 plotly==5.24.1
 pymysql==1.1.0
 cryptography==41.0.7
@@ -26,5 +27,7 @@ playwright==1.40.0
 nest_asyncio==1.6.0
 awscli==1.32.0
 curl-cffi==0.6.3
+matplotlib>=3.7.0  # Для лучшей совместимости
+seaborn>=0.12.0  # Для лучшей совместимости
 
 
