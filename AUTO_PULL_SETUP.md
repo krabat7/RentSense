@@ -1,5 +1,54 @@
 # Настройка автоматического pull на сервере
 
+## ⚠️ ВАЖНО: Настройка аутентификации GitHub
+
+Перед настройкой автоматического pull нужно настроить аутентификацию GitHub.
+
+### Проблема: GitHub больше не поддерживает пароли для git операций
+
+### Решение 1: SSH ключи (рекомендуется)
+
+```bash
+ssh root@89.110.92.128
+cd /root/RentSense  # или ваш путь
+
+# Скачайте скрипт настройки
+git pull origin main
+chmod +x setup_github_auth.sh
+./setup_github_auth.sh
+```
+
+Или вручную:
+
+```bash
+# 1. Генерируем SSH ключ (если нет)
+ssh-keygen -t ed25519 -C "server@rentsense" -f ~/.ssh/id_rsa -N ""
+
+# 2. Показываем публичный ключ
+cat ~/.ssh/id_rsa.pub
+
+# 3. Копируем ключ и добавляем в GitHub:
+#    https://github.com/settings/keys -> New SSH key
+
+# 4. Меняем remote на SSH
+git remote set-url origin git@github.com:krabat7/RentSense.git
+
+# 5. Тестируем
+ssh -T git@github.com
+```
+
+### Решение 2: Personal Access Token
+
+```bash
+# 1. Создайте токен: https://github.com/settings/tokens
+#    Права: repo (все права на репозиторий)
+
+# 2. Используйте токен вместо пароля
+git remote set-url origin https://YOUR_TOKEN@github.com/krabat7/RentSense.git
+```
+
+---
+
 ## Вариант 1: Через cron (простой, рекомендованный)
 
 ### Шаги:
@@ -9,9 +58,19 @@
    ssh root@89.110.92.128
    ```
 
-2. **Перейдите в директорию проекта:**
+2. **Настройте аутентификацию GitHub** (см. выше)
+
+3. **Перейдите в директорию проекта:**
    ```bash
    cd /root/RentSense  # или путь, где находится ваш проект
+   ```
+   
+4. **Исправьте проблему с локальными изменениями:**
+   ```bash
+   # Удалите или добавьте в .gitignore файлы, которые мешают
+   git checkout -- rentsense.log  # сбросить изменения
+   # или
+   git stash  # временно сохранить изменения
    ```
 
 3. **Настройте автоматический pull каждые 5 минут:**

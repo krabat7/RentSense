@@ -31,6 +31,11 @@ cd "$PROJECT_DIR" || {
 OLD_COMMIT=$(git rev-parse HEAD)
 log "Текущий коммит: $OLD_COMMIT"
 
+# Сбрасываем локальные изменения в игнорируемых файлах (логи и т.д.)
+log "Сброс локальных изменений в игнорируемых файлах..."
+git checkout -- . 2>/dev/null || true
+git clean -fd --quiet || true
+
 # Получаем последние изменения
 log "Получение изменений из репозитория..."
 git fetch origin main
