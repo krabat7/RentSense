@@ -11,34 +11,19 @@ __pycache__/
 
 # Log files
 *.log
-rentsense.log
 
-# Python cache files
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Log files
-*.log
-rentsense.log
-
-# Python cache files
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Log files
-*.log
-rentsense.log
-
-# Python cache files
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Log files
-*.log
-rentsense.log
+# Temporary files
+*.html
+*.png
+*.csv
+*.json
+*.txt
+CACHED
+FETCH_HEAD
+exporting
+transferring
+unpacking
+naming
+resolve
+=
+[internal]
