@@ -27,3 +27,11 @@ naming
 resolve
 =
 [internal]
+
+# DVC
+.dvc/cache/
+.dvc/tmp/
+*.dvc
+
+# MLflow
+mlruns/

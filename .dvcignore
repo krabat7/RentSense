@@ -1,0 +1,43 @@
+# Python
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.venv
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+
+# Data (raw data не храним в DVC, только processed)
+data/raw/*.csv
+data/raw/*.json
+
+# Models (будут версионироваться отдельно через DVC)
+ml/models/*.pkl
+ml/models/*.pickle
+
+# DVC internal
+.dvc/cache/
+.dvc/tmp/
+
