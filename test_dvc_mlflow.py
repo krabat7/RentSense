@@ -18,12 +18,13 @@ print("=== Тестирование инфраструктуры ML ===\n")
 
 # Тест 1: DVC
 print("1. Тестирование DVC...")
+dvc_ok = False
 try:
     import dvc.api
     from dvc.repo import Repo
     
     repo = Repo()
-    print("✅ DVC инициализирован")
+    print("[OK] DVC инициализирован")
     print(f"   Рабочая директория: {repo.root_dir}")
     
     # Проверка remote
@@ -33,25 +34,20 @@ try:
         for name in remotes:
             print(f"     - {name}")
     else:
-        print("   ⚠️  Remote хранилище не настроено (используется локальное)")
+        print("   [WARNING] Remote хранилище не настроено (используется локальное)")
+    dvc_ok = True
     
 except ImportError:
     print("[ERROR] DVC не установлен. Установите: pip install dvc dvc-s3")
     print("   Продолжаем проверку других компонентов...")
-    dvc_ok = False
 except Exception as e:
     print(f"[ERROR] Ошибка DVC: {e}")
-    dvc_ok = False
-else:
-    dvc_ok = True
-except Exception as e:
-    print(f"❌ Ошибка DVC: {e}")
-    sys.exit(1)
 
 print()
 
 # Тест 2: MLflow
 print("2. Тестирование MLflow...")
+mlflow_ok = False
 try:
     import mlflow
     from ml.mlflow_config import init_mlflow, EXPERIMENT_NAME, MLFLOW_TRACKING_URI
@@ -68,17 +64,14 @@ try:
         mlflow.log_metric("test_score", 1.0)
         mlflow.set_tag("status", "test")
         print("   [OK] Тестовая запись создана успешно")
-        
+    mlflow_ok = True
+    
 except ImportError:
     print("[ERROR] MLflow не установлен. Установите: pip install mlflow")
-    mlflow_ok = False
 except Exception as e:
     print(f"[ERROR] Ошибка MLflow: {e}")
     import traceback
     traceback.print_exc()
-    mlflow_ok = False
-else:
-    mlflow_ok = True
 
 print()
 
@@ -106,12 +99,12 @@ print()
 
 # Итоговый результат
 print("=== Итоговый результат ===")
-if 'dvc_ok' in locals() and dvc_ok:
+if dvc_ok:
     print("[OK] DVC: готов")
 else:
     print("[SKIP] DVC: не установлен (можно установить позже: pip install dvc dvc-s3)")
 
-if 'mlflow_ok' in locals() and mlflow_ok:
+if mlflow_ok:
     print("[OK] MLflow: готов")
 else:
     print("[SKIP] MLflow: не установлен (можно установить позже: pip install mlflow)")
@@ -119,4 +112,3 @@ else:
 print("[OK] Структура проекта: проверена")
 print()
 print("Конфигурация создана! Для полной работы установите зависимости.")
-
