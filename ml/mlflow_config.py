@@ -40,14 +40,14 @@ def get_or_create_experiment(experiment_name: str = EXPERIMENT_NAME):
     """
     try:
         experiment_id = mlflow.create_experiment(experiment_name)
-        print(f"Создан новый эксперимент: {experiment_name} (ID: {experiment_id})")
+        print(f"[OK] Создан новый эксперимент: {experiment_name} (ID: {experiment_id})")
     except Exception as e:
         # Эксперимент уже существует
         experiment = mlflow.get_experiment_by_name(experiment_name)
         if experiment is None:
             raise Exception(f"Не удалось создать или найти эксперимент: {e}")
         experiment_id = experiment.experiment_id
-        print(f"Используется существующий эксперимент: {experiment_name} (ID: {experiment_id})")
+        print(f"[OK] Используется существующий эксперимент: {experiment_name} (ID: {experiment_id})")
     
     mlflow.set_experiment(experiment_name)
     return experiment_id
@@ -68,16 +68,16 @@ if __name__ == "__main__":
     print("=== Тестирование MLflow конфигурации ===")
     try:
         experiment_id = init_mlflow()
-        print(f"✅ MLflow настроен успешно! Experiment ID: {experiment_id}")
+        print(f"[OK] MLflow настроен успешно! Experiment ID: {experiment_id}")
         
         # Тест записи в MLflow
         with mlflow.start_run(run_name="test_run"):
             mlflow.log_param("test_param", "test_value")
             mlflow.log_metric("test_metric", 0.95)
-            print("✅ Тестовая запись в MLflow создана успешно!")
+            print("[OK] Тестовая запись в MLflow создана успешно!")
             
     except Exception as e:
-        print(f"❌ Ошибка настройки MLflow: {e}")
+        print(f"[ERROR] Ошибка настройки MLflow: {e}")
         import traceback
         traceback.print_exc()
 
