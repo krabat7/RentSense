@@ -9,10 +9,19 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 
 # Настройка tracking URI из переменной окружения или по умолчанию
-MLFLOW_TRACKING_URI = os.getenv(
-    'MLFLOW_TRACKING_URI', 
-    'file://' + str(PROJECT_ROOT / 'mlruns')
-)
+# На Windows используем просто путь, на Linux/Mac - file://
+_default_uri = str(PROJECT_ROOT / 'mlruns')
+if os.name == 'nt':  # Windows
+    # На Windows используем просто путь или SQLite
+    MLFLOW_TRACKING_URI = os.getenv(
+        'MLFLOW_TRACKING_URI',
+        f'sqlite:///{PROJECT_ROOT}/mlflow.db'
+    )
+else:  # Linux/Mac
+    MLFLOW_TRACKING_URI = os.getenv(
+        'MLFLOW_TRACKING_URI',
+        f'file://{_default_uri}'
+    )
 
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
