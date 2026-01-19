@@ -10,8 +10,9 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Директория проекта
-PROJECT_DIR="/root/RentSense"
+# Директория проекта (автоматически определяется)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
 LOG_FILE="/var/log/git-pull.log"
 
 # Функция для логирования
