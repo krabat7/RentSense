@@ -25,5 +25,6 @@ webdriver-manager==4.0.1
 playwright==1.40.0
 nest_asyncio==1.6.0
 awscli==1.32.0
+curl-cffi==0.6.3
 
 

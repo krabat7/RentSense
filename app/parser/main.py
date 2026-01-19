@@ -8,6 +8,14 @@ from .database import DB, model_classes
 from .pagecheck import pagecheck
 from .tools import headers, proxyDict, proxyBlockedTime, proxyErrorCount, proxyConnectionErrors, proxyTemporaryBan, check_and_unfreeze_proxies, load_proxy_bans, recjson
 
+# Импорт curl_cffi для резидентского прокси
+try:
+    import curl_cffi.requests as curl_requests
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    CURL_CFFI_AVAILABLE = False
+    logging.warning("curl_cffi not available, will use Playwright only")
+
 URL = 'https://www.cian.ru'
 
 _playwright = None
@@ -166,7 +174,154 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
     
     logging.info(f'getResponse: URL={url[:100]}..., proxy={proxy[:50] if proxy else "none"}...')
     
-    # Делаем запрос через Playwright
+    # Для резидентского прокси используем curl_cffi вместо Playwright
+    if proxy and 'pool.proxy.market' in proxy and CURL_CFFI_AVAILABLE:
+        try:
+            logging.info(f'Using curl_cffi for residential proxy')
+            start_time = time.time()
+            
+            # Формируем прокси для curl_cffi
+            proxies = {"http": proxy, "https": proxy}
+            
+            # Выбираем случайные заголовки
+            if headers:
+                selected_headers = random.choice(headers).copy()
+            else:
+                selected_headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "Accept-Encoding": "gzip, deflate, br, zstd",
+                    "Referer": "https://www.cian.ru/",
+                }
+            
+            # Делаем запрос через curl_cffi
+            response = curl_requests.get(
+                url,
+                headers=selected_headers,
+                proxies=proxies,
+                timeout=30,
+                impersonate="chrome110"
+            )
+            
+            elapsed = time.time() - start_time
+            status = response.status_code
+            content = response.text
+            
+            logging.info(f'getResponse (curl_cffi): Status={status}, time={elapsed:.2f}s, proxy={proxy[:50]}...')
+            
+            if status != 200:
+                logging.error(f'getResponse (curl_cffi): Page {page} | Retry: {respTry} | Status: {status}')
+                
+                if not respTry:
+                    logging.warning(f'getResponse (curl_cffi): No retries left, returning None')
+                    return None
+                
+                # Блокируем прокси при ошибках
+                if status in (403, 429):
+                    block_time = 20 * 60
+                    proxyDict[proxy] = time.time() + block_time
+                    proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                    if proxyErrorCount[proxy] >= 2:
+                        proxyBlockedTime[proxy] = time.time()
+                        block_time = 30 * 60
+                        proxyDict[proxy] = time.time() + block_time
+                    logging.warning(f'getResponse (curl_cffi): Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
+                    if respTry > 1:
+                        delay = random.uniform(10, 20)
+                        logging.info(f'Waiting {delay:.1f}s before retry after {status}')
+                        time.sleep(delay)
+                elif status == 404:
+                    logging.info(f'getResponse (curl_cffi): Page {page} not found (404)')
+                    return None
+                else:
+                    proxyDict[proxy] = time.time() + (1 * 60)
+                
+                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+            
+            # Проверяем на CAPTCHA
+            if content and ('captcha' in content.lower() or 'капча' in content.lower() or 'recaptcha' in content.lower()):
+                logging.error("CAPTCHA detected in response content (curl_cffi)!")
+                if proxy:
+                    proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                    if proxyErrorCount[proxy] >= 2:
+                        block_time = 30 * 60
+                    else:
+                        block_time = 20 * 60
+                    proxyDict[proxy] = time.time() + block_time
+                    proxyBlockedTime[proxy] = time.time()
+                    logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} min due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
+                
+                _captcha_count[page] = _captcha_count.get(page, 0) + 1
+                
+                if _captcha_count[page] >= 2:
+                    logging.warning(f'{_captcha_count[page]} CAPTCHA in a row for page {page}, waiting 2 minutes before skipping')
+                    time.sleep(120)
+                    return 'CAPTCHA'
+                
+                if respTry <= 2:
+                    available_after_captcha = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
+                    if len(available_after_captcha) == 0:
+                        logging.warning(f'All proxies blocked after CAPTCHA, waiting 1 minute before skipping page {page}')
+                        time.sleep(60)
+                        return 'CAPTCHA'
+                
+                if respTry > 1:
+                    delay = random.uniform(30, 60)
+                    logging.info(f'Waiting {delay:.1f}s before retry after CAPTCHA')
+                    time.sleep(delay)
+                
+                if not respTry:
+                    return 'CAPTCHA'
+                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+            
+            # Успешный запрос
+            proxyDict[proxy] = time.time() + 0
+            proxyErrorCount[proxy] = 0
+            proxyConnectionErrors[proxy] = 0
+            if page in _captcha_count:
+                _captcha_count[page] = 0
+            
+            delay = random.uniform(4, 10)
+            logging.info(f'getResponse (curl_cffi): Success, content length={len(content)}, waiting {delay:.1f}s before next request')
+            time.sleep(delay)
+            
+            logging.info(f'getResponse (curl_cffi): Success, content length={len(content)}')
+            return content
+            
+        except Exception as e:
+            error_msg = str(e)
+            logging.error(f'getResponse (curl_cffi): Exception for proxy {proxy[:50] if proxy else "none"}...: {e}')
+            
+            if not respTry:
+                logging.warning(f'getResponse (curl_cffi): No retries left after exception, returning None')
+                return None
+            
+            # Блокируем прокси при исключении
+            if proxy:
+                if 'connection' in error_msg.lower() or 'timeout' in error_msg.lower():
+                    proxyConnectionErrors[proxy] = proxyConnectionErrors.get(proxy, 0) + 1
+                    connection_errors = proxyConnectionErrors[proxy]
+                    
+                    if connection_errors >= 3:
+                        block_time = 60 * 60
+                        logging.warning(f'Proxy {proxy[:50]}... has {connection_errors} connection errors, blocking for 1 hour')
+                    elif connection_errors >= 2:
+                        block_time = 30 * 60
+                        logging.warning(f'Proxy {proxy[:50]}... has {connection_errors} connection errors, blocking for 30 min')
+                    else:
+                        block_time = 10 * 60
+                        logging.warning(f'Proxy {proxy[:50]}... connection error, blocking for 10 min')
+                    
+                    proxyDict[proxy] = time.time() + block_time
+                    proxyBlockedTime[proxy] = time.time()
+                else:
+                    proxyDict[proxy] = time.time() + (1 * 60)
+                proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+            
+            return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+    
+    # Делаем запрос через Playwright (для обычных прокси)
     try:
         browser = _get_browser()
         context_options = {}
@@ -215,7 +370,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 # и увеличиваем таймаут до 90 секунд (прокси могут быть медленными)
                 response = page_obj.goto(url, wait_until='load', timeout=90000)
             else:  # Список страниц
-                response = page_obj.goto(url, wait_until='networkidle', timeout=30000)
+                # Для резидентского прокси используем 'domcontentloaded' и увеличиваем таймаут
+                if 'pool.proxy.market' in proxy:  # Проверяем, является ли прокси резидентским
+                    response = page_obj.goto(url, wait_until='domcontentloaded', timeout=90000)
+                else:
+                    response = page_obj.goto(url, wait_until='domcontentloaded', timeout=90000)
             elapsed = time.time() - start_time
         except Exception as e:
             # Закрываем контекст и страницу при ошибке создания
