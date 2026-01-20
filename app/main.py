@@ -3,8 +3,7 @@ from app.api.main import fastapi
 
 
 async def main():
-    # Backend запускает только FastAPI
-    # Cron запускается отдельно в parser контейнере
+    """Запуск FastAPI сервера."""
     await fastapi()
 
 

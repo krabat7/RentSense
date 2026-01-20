@@ -8,38 +8,26 @@
 RentSense/
 ├── app/                    # Основное приложение
 │   ├── api/               # FastAPI endpoints
-│   │   ├── main.py        # API роуты
-│   │   ├── models.py      # Pydantic модели
-│   │   ├── preprocess.py  # Предобработка данных
-│   │   └── theards.py     # Утилиты для потоков
 │   ├── parser/            # Парсер ЦИАН
-│   │   ├── database.py    # Модели БД (SQLAlchemy)
-│   │   ├── main.py        # Основной парсер
-│   │   ├── pagecheck.py   # Парсинг страниц
-│   │   └── tools.py       # Утилиты (прокси, логирование)
-│   ├── scheduler/         # Планировщик задач
-│   │   ├── crontab.py     # Cron конфигурация
-│   │   └── tasks.py       # Задачи парсинга
-│   └── main.py           # Точка входа приложения
+│   └── scheduler/         # Планировщик задач
 ├── ml/                    # Машинное обучение
-│   ├── eda/              # EDA ноутбуки (будут добавлены)
+│   ├── eda/              # EDA ноутбуки
 │   ├── features/         # Генерация фичей
-│   │   └── geo_features.py  # Географические фичи
-│   └── models/           # Обученные модели (будут добавлены)
+│   ├── models/           # Обученные модели
+│   ├── prepare_data.py   # Подготовка данных
+│   └── train_baseline.py # Обучение моделей
 ├── data/                  # Данные
 │   ├── raw/              # Сырые данные
 │   └── processed/        # Обработанные данные
-├── docker-compose.prod.yml  # Docker Compose конфигурация
-├── Dockerfile            # Docker образ
-├── requirements.txt      # Python зависимости
-└── create_database.py    # Скрипт инициализации БД
+├── tests/                 # Тесты
+└── .github/workflows/     # CI/CD
 ```
 
 ## Требования
 
 - Python 3.10+
 - Docker и Docker Compose
-- MySQL 8.0 (или использование через Docker)
+- MySQL 8.0
 
 ## Установка
 
@@ -47,11 +35,12 @@ RentSense/
 2. Создайте файл `.env` с настройками БД:
    ```
    DB_TYPE=mysql+pymysql
-   DB_LOGIN=root
-   DB_PASS=your_password
-   DB_IP=localhost
+   DB_LOGIN=rentsense
+   DB_PASS=rentsense
+   DB_IP=89.110.92.128
    DB_PORT=3306
    DB_NAME=rentsense
+   MLFLOW_TRACKING_URI=sqlite:///mlflow.db
    ```
 3. Запустите через Docker Compose:
    ```bash
@@ -63,22 +52,33 @@ RentSense/
 - API доступен на `http://localhost:8000`
 - Health check: `http://localhost:8000/health`
 - Парсер запускается автоматически через cron
-- Adminer для управления БД: `http://localhost:8080`
 
-## API Endpoints
+## ML Pipeline
 
-- `GET /api/getparams?url=<cian_url>` - Получить параметры объявления
-- `POST /api/predict` - Предсказать цену (в разработке)
+1. Подготовка данных:
+   ```bash
+   python ml/prepare_data.py
+   ```
+
+2. Обучение моделей:
+   ```bash
+   python ml/train_baseline.py
+   ```
 
 ## База данных
 
-Проект использует MySQL с следующими основными таблицами:
+Основные таблицы:
 - `offers` - объявления
-- `addresses` - адреса
+- `addresses` - адреса и геоданные
 - `photos` - фотографии
-- `realty_inside` - внутренние характеристики
-- `realty_outside` - внешние характеристики
-- `realty_details` - детали недвижимости
+- `realty_inside`, `realty_outside`, `realty_details` - характеристики недвижимости
 - `offers_details` - детали объявлений
 - `developers` - застройщики
+
+## CI/CD
+
+Проект использует GitHub Actions для автоматической проверки кода:
+- black - форматирование кода
+- flake8 - линтер
+- pytest - тесты
 

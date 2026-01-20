@@ -1,8 +1,14 @@
+"""
+Географические фичи для модели предсказания цены аренды.
+
+Расстояние до центра Москвы, расстояние до метро, кодирование района.
+"""
 import math
 import pandas as pd
 
 
 def calculate_distance_from_center(lat, lng, center_lat=55.753600, center_lng=37.621184):
+    """Вычисление расстояния от точки до центра Москвы (формула гаверсинуса)."""
     earth_radius_km = 6371
     lat1, lng1, lat2, lng2 = map(math.radians, [lat, lng, center_lat, center_lng])
     dlat = lat2 - lat1
@@ -13,6 +19,7 @@ def calculate_distance_from_center(lat, lng, center_lat=55.753600, center_lng=37
 
 
 def add_geo_features_v0(df):
+    """Добавление географических фичей в датафрейм."""
     if 'coordinates' in df.columns:
         df['lat'] = df['coordinates'].apply(lambda x: x['lat'] if isinstance(x, dict) else None)
         df['lng'] = df['coordinates'].apply(lambda x: x['lng'] if isinstance(x, dict) else None)

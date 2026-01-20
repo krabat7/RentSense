@@ -37,3 +37,12 @@ resolve
 mlruns/
 mlflow.db
 mlflow.db-journal
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# CatBoost artifacts
+catboost_info/

@@ -18,13 +18,13 @@ for i in range(max_retries):
         with connection.cursor() as cursor:
             cursor.execute(f"CREATE DATABASE IF NOT EXISTS {dbname} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
             connection.commit()
-            print(f"Database {dbname} created successfully")
+            print(f"База данных {dbname} создана успешно")
         connection.close()
         break
     except Exception as e:
         if i < max_retries - 1:
-            print(f"Retry {i+1}/{max_retries}: MySQL not ready, waiting...")
+            print(f"Повтор {i+1}/{max_retries}: MySQL не готов, ожидание...")
             time.sleep(5)
         else:
-            print(f"Error creating database: {e}")
+            print(f"Ошибка создания базы данных: {e}")
 
