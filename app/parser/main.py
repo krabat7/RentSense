@@ -518,14 +518,51 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             except:
                 pass
             
+            # Проверяем наличие контента объявлений (признак рабочей страницы)
+            has_content = False
+            try:
+                # Ищем элементы, которые должны быть на рабочей странице
+                content_selectors = [
+                    '[data-name="CardComponent"]',  # Карточки объявлений
+                    '.c6e8ba5398',  # Класс карточек
+                    'article',
+                    '[data-testid="card"]',
+                    '.catalog-serp',  # Каталог
+                ]
+                for selector in content_selectors:
+                    try:
+                        if page_obj.query_selector(selector):
+                            has_content = True
+                            break
+                    except:
+                        continue
+            except:
+                pass
+            
             # Проверяем текст на странице (видимый текст, не весь HTML)
             visible_text = ""
             has_vpn_message = False
             try:
                 visible_text = page_obj.inner_text('body').lower()
-                has_vpn_message = 'vpn' in visible_text or 'включён' in visible_text
+                # Проверяем конкретные паттерны блокировки VPN, а не просто слово "vpn"
+                vpn_patterns = [
+                    'кажется, у вас включён vpn',
+                    'отключите его и обновите страницу',
+                    'waf_block',
+                    'cian_waf_block',
+                ]
+                has_vpn_message = any(pattern in visible_text for pattern in vpn_patterns)
             except:
                 pass
+            
+            # Подсчитываем количество карточек ДО закрытия страницы
+            cards_count = 0
+            if has_content:
+                try:
+                    cards = page_obj.query_selector_all('[data-name="CardComponent"], .c6e8ba5398, article')
+                    cards_count = len(cards)
+                except:
+                    pass
             
             # Получаем контент для дальнейшей обработки
             content = page_obj.content()
@@ -542,7 +579,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             except:
                 pass
             
-            # Проверяем на CAPTCHA - приоритет: редирект > видимые элементы > VPN сообщение > слово в HTML
+            # Проверяем на CAPTCHA - приоритет: редирект > видимые элементы > VPN сообщение (только если нет контента) > паттерны в HTML
             captcha_detected = False
             if is_captcha_redirect:
                 logging.error("CAPTCHA detected: redirect to CAPTCHA page!")
@@ -550,13 +587,19 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             elif captcha_visible:
                 logging.error("CAPTCHA detected: visible CAPTCHA element on page!")
                 captcha_detected = True
-            elif has_vpn_message:
-                logging.error("CAPTCHA detected: VPN block message!")
+            elif has_vpn_message and not has_content:
+                # VPN блокировка только если нет контента объявлений
+                logging.error("CAPTCHA detected: VPN block message (no content found)!")
                 captcha_detected = True
             elif content and ('showcaptcha' in content.lower() or 'tmgrdfrend/showcaptcha' in content.lower()):
-                # Проверяем только конкретные паттерны редиректа на CAPTCHA в HTML, а не просто слово "captcha"
+                # Проверяем только конкретные паттерны редиректа на CAPTCHA в HTML
                 logging.error("CAPTCHA detected: CAPTCHA redirect pattern in content!")
                 captcha_detected = True
+            
+            # Если есть контент объявлений, страница работает (даже если где-то упоминается VPN)
+            if has_content and not is_captcha_redirect and not captcha_visible:
+                logging.info(f"Content found on page - page is working (found {cards_count} cards/items)")
+                captcha_detected = False  # Переопределяем, если есть контент
             
             if captcha_detected:
                 if proxy:
