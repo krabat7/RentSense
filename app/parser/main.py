@@ -36,7 +36,19 @@ def _get_browser():
             except:
                 pass
         _playwright = sync_playwright().start()
-        _browser = _playwright.chromium.launch(headless=True)
+        # Улучшенные параметры для обхода детекции в headless режиме
+        _browser = _playwright.chromium.launch(
+            headless=True,
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--disable-site-isolation-trials',
+            ]
+        )
         logging.info('Browser recreated')
     return _browser
 
@@ -340,6 +352,18 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if extra_headers:
                 context_options['extra_http_headers'] = extra_headers
         
+        # Добавляем дополнительные параметры для обхода детекции
+        context_options['viewport'] = {'width': 1920, 'height': 1080}
+        context_options['locale'] = 'ru-RU'
+        context_options['timezone_id'] = 'Europe/Moscow'
+        context_options['geolocation'] = {'latitude': 55.7558, 'longitude': 37.6173}  # Москва
+        context_options['permissions'] = ['geolocation']
+        context_options['color_scheme'] = 'light'
+        context_options['device_scale_factor'] = 1
+        context_options['has_touch'] = False
+        context_options['is_mobile'] = False
+        context_options['java_script_enabled'] = True
+        
         # Устанавливаем прокси с правильной обработкой аутентификации
         if proxy:
             # Если прокси содержит аутентификацию (format: http://USER:PASS@IP:PORT)
@@ -366,20 +390,47 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
         page_obj = None
         try:
             context = browser.new_context(**context_options)
+            
+            # Добавляем init script для обхода детекции автоматизации
+            context.add_init_script("""
+                // Убираем webdriver
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                
+                // Подменяем chrome
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
+                
+                // Подменяем plugins
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+                
+                // Подменяем languages
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['ru-RU', 'ru', 'en-US', 'en']
+                });
+                
+                // Подменяем permissions
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+            """)
+            
             page_obj = context.new_page()
             
             start_time = time.time()
-            # Для страниц объявлений используем больший таймаут и более мягкое условие загрузки
-            if type == 1:  # Страница объявления
-                # Используем 'load' вместо 'domcontentloaded' для более надежной загрузки
-                # и увеличиваем таймаут до 90 секунд (прокси могут быть медленными)
-                response = page_obj.goto(url, wait_until='load', timeout=90000)
-            else:  # Список страниц
-                # Для резидентского прокси используем 'domcontentloaded' и увеличиваем таймаут
-                if 'pool.proxy.market' in proxy:  # Проверяем, является ли прокси резидентским
-                    response = page_obj.goto(url, wait_until='domcontentloaded', timeout=90000)
-                else:
-                    response = page_obj.goto(url, wait_until='domcontentloaded', timeout=90000)
+            # Используем 'domcontentloaded' для всех типов страниц (избегаем таймаутов с 'networkidle')
+            # Увеличиваем таймаут до 90 секунд (прокси могут быть медленными)
+            response = page_obj.goto(url, wait_until='domcontentloaded', timeout=90000)
             elapsed = time.time() - start_time
         except Exception as e:
             # Закрываем контекст и страницу при ошибке создания
