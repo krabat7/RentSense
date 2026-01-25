@@ -282,7 +282,12 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if page in _captcha_count:
                 _captcha_count[page] = 0
             
-            delay = random.uniform(4, 10)
+            # Более широкий диапазон задержек для имитации человеческого поведения (3-20 секунд)
+            # Иногда быстрее (3-8 сек), иногда медленнее (12-20 сек) - как реальный пользователь
+            if random.random() < 0.7:  # 70% случаев - быстрые запросы
+                delay = random.uniform(3, 12)
+            else:  # 30% случаев - более медленные запросы
+                delay = random.uniform(12, 25)
             logging.info(f'getResponse (curl_cffi): Success, content length={len(content)}, waiting {delay:.1f}s before next request')
             time.sleep(delay)
             
@@ -501,9 +506,12 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if page in _captcha_count:
                 _captcha_count[page] = 0
             
-            # Добавляем случайную задержку между запросами (4-10 секунд, как советует дипсик)
-            # Это помогает избежать детекции автоматизации
-            delay = random.uniform(4, 10)
+            # Более широкий диапазон задержек для имитации человеческого поведения (3-25 секунд)
+            # Иногда быстрее (3-8 сек), иногда медленнее (12-25 сек) - как реальный пользователь
+            if random.random() < 0.7:  # 70% случаев - быстрые запросы
+                delay = random.uniform(3, 12)
+            else:  # 30% случаев - более медленные запросы
+                delay = random.uniform(12, 28)
             logging.info(f'getResponse: Success, content length={len(content)}, waiting {delay:.1f}s before next request')
             time.sleep(delay)
             
