@@ -1,4 +1,5 @@
 import logging
+import os
 from dotenv import dotenv_values
 from sqlalchemy import DECIMAL, Column, ForeignKey, create_engine, text, JSON, Boolean, Integer, BigInteger, String, DateTime
 from sqlalchemy.dialects.mysql import TEXT, TIMESTAMP
@@ -9,12 +10,13 @@ Base = declarative_base()
 from pathlib import Path
 env_path = Path(__file__).parent.parent.parent / '.env'
 env = dotenv_values(env_path)
-DBTYPE = env.get('DB_TYPE') or 'mysql+pymysql'
-LOGIN = env.get('DB_LOGIN') or 'root'
-PASS = env.get('DB_PASS') or 'rootpassword'
-IP = env.get('DB_IP') or 'localhost'
-PORT = env.get('DB_PORT') or '3307'
-DBNAME = env.get('DB_NAME') or 'rentsense'
+# Приоритет: переменные окружения > .env файл > значения по умолчанию
+DBTYPE = os.getenv('DB_TYPE') or env.get('DB_TYPE') or 'mysql+pymysql'
+LOGIN = os.getenv('DB_LOGIN') or env.get('DB_LOGIN') or 'root'
+PASS = os.getenv('DB_PASS') or env.get('DB_PASS') or 'rootpassword'
+IP = os.getenv('DB_IP') or env.get('DB_IP') or 'localhost'
+PORT = os.getenv('DB_PORT') or env.get('DB_PORT') or '3307'
+DBNAME = os.getenv('DB_NAME') or env.get('DB_NAME') or 'rentsense'
 DATABASE_URL = f'{DBTYPE}://{LOGIN}:{PASS}@{IP}:{PORT}/{DBNAME}?charset=utf8mb4'
 
 
