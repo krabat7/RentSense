@@ -492,8 +492,44 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
             
-            # Успешный запрос
+            # Успешный запрос - проверяем на CAPTCHA ДО закрытия страницы
+            current_url = page_obj.url
+            
+            # Проверяем редирект на страницу CAPTCHA (самый надежный способ)
+            is_captcha_redirect = 'captcha' in current_url.lower() or 'showcaptcha' in current_url.lower()
+            
+            # Проверяем видимые элементы CAPTCHA на странице
+            captcha_visible = False
+            try:
+                captcha_selectors = [
+                    'iframe[src*="captcha"]',
+                    'iframe[src*="recaptcha"]',
+                    '.captcha:visible',
+                    '#captcha:visible',
+                ]
+                for selector in captcha_selectors:
+                    try:
+                        elem = page_obj.query_selector(selector)
+                        if elem and elem.is_visible():
+                            captcha_visible = True
+                            break
+                    except:
+                        continue
+            except:
+                pass
+            
+            # Проверяем текст на странице (видимый текст, не весь HTML)
+            visible_text = ""
+            has_vpn_message = False
+            try:
+                visible_text = page_obj.inner_text('body').lower()
+                has_vpn_message = 'vpn' in visible_text or 'включён' in visible_text
+            except:
+                pass
+            
+            # Получаем контент для дальнейшей обработки
             content = page_obj.content()
+            
             # Безопасное закрытие
             try:
                 if page_obj:
@@ -506,9 +542,23 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             except:
                 pass
             
-            # Проверяем на CAPTCHA в содержимом (до парсинга)
-            if content and ('captcha' in content.lower() or 'капча' in content.lower() or 'recaptcha' in content.lower()):
-                logging.error("CAPTCHA detected in response content!")
+            # Проверяем на CAPTCHA - приоритет: редирект > видимые элементы > VPN сообщение > слово в HTML
+            captcha_detected = False
+            if is_captcha_redirect:
+                logging.error("CAPTCHA detected: redirect to CAPTCHA page!")
+                captcha_detected = True
+            elif captcha_visible:
+                logging.error("CAPTCHA detected: visible CAPTCHA element on page!")
+                captcha_detected = True
+            elif has_vpn_message:
+                logging.error("CAPTCHA detected: VPN block message!")
+                captcha_detected = True
+            elif content and ('showcaptcha' in content.lower() or 'tmgrdfrend/showcaptcha' in content.lower()):
+                # Проверяем только конкретные паттерны редиректа на CAPTCHA в HTML, а не просто слово "captcha"
+                logging.error("CAPTCHA detected: CAPTCHA redirect pattern in content!")
+                captcha_detected = True
+            
+            if captcha_detected:
                 if proxy:
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
