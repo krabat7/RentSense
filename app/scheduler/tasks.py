@@ -19,7 +19,10 @@ async def parsing(page=1):
     Всегда начинаем с page=1, чтобы находить самые свежие объявления.
     """
     rooms = ['', 'room1', 'room2', 'room3', 'room4', 'room5', 'room6', 'room7', 'room8', 'room9']
-    sorts = ['', 'creation_date_asc', 'creation_date_desc']
+    # Всегда идём от новых к старым объявлениям:
+    # используем только сортировку по дате создания по убыванию (новые сверху).
+    # Переход по страницам (1, 2, 3, ...) даёт движение от новых к более старым.
+    sorts = ['creation_date_desc']
 
     def process_page(start_page, sort, room):
         """

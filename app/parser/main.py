@@ -231,12 +231,14 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 # Блокируем прокси при ошибках
                 if status in (403, 429):
-                    block_time = 20 * 60
+                    # Более мягкая блокировка при 403/429 для curl_cffi-прокси:
+                    # сначала 12 минут, при повторных ошибках 20 минут
+                    block_time = 12 * 60
                     proxyDict[proxy] = time.time() + block_time
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
                         proxyBlockedTime[proxy] = time.time()
-                        block_time = 30 * 60
+                        block_time = 20 * 60
                         proxyDict[proxy] = time.time() + block_time
                     logging.warning(f'getResponse (curl_cffi): Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
                     if respTry > 1:
@@ -256,10 +258,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 logging.error("CAPTCHA detected in response content (curl_cffi)!")
                 if proxy:
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                    # CAPTCHA: чуть короче баны, чтобы прокси быстрее возвращались в пул
                     if proxyErrorCount[proxy] >= 2:
-                        block_time = 30 * 60
-                    else:
                         block_time = 20 * 60
+                    else:
+                        block_time = 12 * 60
                     proxyDict[proxy] = time.time() + block_time
                     proxyBlockedTime[proxy] = time.time()
                     logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} min due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
@@ -470,13 +473,14 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 # Блокируем прокси при ошибках
                 if status in (403, 429):
-                    # Увеличено время блокировки для более консервативного подхода
-                    block_time = 20 * 60  # 20 минут блокировки (увеличено с 10)
+                    # Более мягкая блокировка при 403/429:
+                    # сначала 12 минут, при повторных ошибках 20 минут
+                    block_time = 12 * 60
                     proxyDict[proxy] = time.time() + block_time
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
                         proxyBlockedTime[proxy] = time.time()
-                        block_time = 30 * 60  # 30 минут при повторных ошибках (увеличено с 15)
+                        block_time = 20 * 60
                         proxyDict[proxy] = time.time() + block_time
                     logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
                     # Делаем паузу перед следующей попыткой после 403/429
@@ -604,10 +608,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if captcha_detected:
                 if proxy:
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                    # CAPTCHA: чуть короче баны, чтобы прокси быстрее возвращались в пул
                     if proxyErrorCount[proxy] >= 2:
-                        block_time = 30 * 60
-                    else:
                         block_time = 20 * 60
+                    else:
+                        block_time = 12 * 60
                     proxyDict[proxy] = time.time() + block_time
                     proxyBlockedTime[proxy] = time.time()
                     logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} min due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
