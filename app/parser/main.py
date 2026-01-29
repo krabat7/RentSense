@@ -430,7 +430,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             start_time = time.time()
             # Используем 'domcontentloaded' для всех типов страниц (избегаем таймаутов с 'networkidle')
             # Увеличиваем таймаут до 90 секунд (прокси могут быть медленными)
-                    response = page_obj.goto(url, wait_until='domcontentloaded', timeout=90000)
+            response = page_obj.goto(url, wait_until='domcontentloaded', timeout=90000)
             elapsed = time.time() - start_time
         except Exception as e:
             # Закрываем контекст и страницу при ошибке создания
