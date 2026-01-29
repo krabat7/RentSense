@@ -231,14 +231,12 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 # Блокируем прокси при ошибках
                 if status in (403, 429):
-                    # Более мягкая блокировка при 403/429 для curl_cffi-прокси:
-                    # сначала 12 минут, при повторных ошибках 20 минут
-                    block_time = 12 * 60
+                    block_time = 20 * 60
                     proxyDict[proxy] = time.time() + block_time
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
                         proxyBlockedTime[proxy] = time.time()
-                        block_time = 20 * 60
+                        block_time = 30 * 60
                         proxyDict[proxy] = time.time() + block_time
                     logging.warning(f'getResponse (curl_cffi): Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
                     if respTry > 1:
@@ -258,11 +256,10 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 logging.error("CAPTCHA detected in response content (curl_cffi)!")
                 if proxy:
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
-                    # CAPTCHA: чуть короче баны, чтобы прокси быстрее возвращались в пул
                     if proxyErrorCount[proxy] >= 2:
-                        block_time = 20 * 60
+                        block_time = 15 * 60  # 15 минут при повторных ошибках (уменьшено с 30)
                     else:
-                        block_time = 12 * 60
+                        block_time = 10 * 60  # 10 минут при первой ошибке (уменьшено с 20)
                     proxyDict[proxy] = time.time() + block_time
                     proxyBlockedTime[proxy] = time.time()
                     logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} min due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
@@ -433,7 +430,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             start_time = time.time()
             # Используем 'domcontentloaded' для всех типов страниц (избегаем таймаутов с 'networkidle')
             # Увеличиваем таймаут до 90 секунд (прокси могут быть медленными)
-            response = page_obj.goto(url, wait_until='domcontentloaded', timeout=90000)
+                    response = page_obj.goto(url, wait_until='domcontentloaded', timeout=90000)
             elapsed = time.time() - start_time
         except Exception as e:
             # Закрываем контекст и страницу при ошибке создания
@@ -473,14 +470,13 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 # Блокируем прокси при ошибках
                 if status in (403, 429):
-                    # Более мягкая блокировка при 403/429:
-                    # сначала 12 минут, при повторных ошибках 20 минут
-                    block_time = 12 * 60
+                    # Уменьшено время блокировки для более быстрого возврата прокси в пул
+                    block_time = 15 * 60  # 15 минут блокировки (уменьшено с 20)
                     proxyDict[proxy] = time.time() + block_time
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
                         proxyBlockedTime[proxy] = time.time()
-                        block_time = 20 * 60
+                        block_time = 20 * 60  # 20 минут при повторных ошибках (уменьшено с 30)
                         proxyDict[proxy] = time.time() + block_time
                     logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
                     # Делаем паузу перед следующей попыткой после 403/429
@@ -608,11 +604,10 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
             if captcha_detected:
                 if proxy:
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
-                    # CAPTCHA: чуть короче баны, чтобы прокси быстрее возвращались в пул
                     if proxyErrorCount[proxy] >= 2:
-                        block_time = 20 * 60
+                        block_time = 15 * 60  # 15 минут при повторных ошибках (уменьшено с 30)
                     else:
-                        block_time = 12 * 60
+                        block_time = 10 * 60  # 10 минут при первой ошибке (уменьшено с 20)
                     proxyDict[proxy] = time.time() + block_time
                     proxyBlockedTime[proxy] = time.time()
                     logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} min due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
@@ -772,12 +767,16 @@ def prePage(data, type=0):
                 if 'access denied' in data.lower() or 'доступ запрещен' in data.lower():
                     logging.error("Access denied in response!")
                 
-                # Если обнаружена CAPTCHA, блокируем прокси на 30 минут и возвращаем специальное значение
+                # Если обнаружена CAPTCHA, блокируем прокси на 10-15 минут и возвращаем специальное значение
                 if captcha_detected and proxy:
-                    logging.warning(f"Blocking proxy {proxy[:50]}... for 30 minutes due to CAPTCHA")
-                    proxyDict[proxy] = time.time() + (30 * 60)  # 30 минут блокировки
-                    proxyBlockedTime[proxy] = time.time()
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                    if proxyErrorCount[proxy] >= 2:
+                        block_time = 15 * 60  # 15 минут при повторных ошибках (уменьшено с 30)
+                    else:
+                        block_time = 10 * 60  # 10 минут при первой ошибке (уменьшено с 30)
+                    logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} minutes due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
+                    proxyDict[proxy] = time.time() + block_time
+                    proxyBlockedTime[proxy] = time.time()
                     return 'CAPTCHA'
             
             # Ищем позицию, где есть и "pageNumber", и "products" рядом
