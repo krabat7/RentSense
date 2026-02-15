@@ -165,6 +165,49 @@ def filter_data(df):
     return df
 
 
+def remove_duplicates(df):
+    """Удаление дубликатов объявлений по этаж + адрес + площадь + комнаты"""
+    initial_count = len(df)
+    
+    df['floor_number'] = pd.to_numeric(df['floor_number'], errors='coerce')
+    df['total_area'] = pd.to_numeric(df['total_area'], errors='coerce')
+    df['rooms_count'] = pd.to_numeric(df['rooms_count'], errors='coerce')
+    
+    df['street'] = df['street'].fillna('').astype(str).str.strip().str.lower()
+    df['house'] = df['house'].fillna('').astype(str).str.strip().str.lower()
+    
+    df['address_key'] = (
+        df['street'].fillna('') + '_' + 
+        df['house'].fillna('')
+    )
+    
+    df['area_rounded'] = df['total_area'].round(0)
+    df['rooms_rounded'] = df['rooms_count'].round(0)
+    
+    df['duplicate_key'] = (
+        df['address_key'].astype(str) + '_' +
+        df['floor_number'].astype(str) + '_' +
+        df['area_rounded'].astype(str) + '_' +
+        df['rooms_rounded'].astype(str)
+    )
+    
+    df['publication_date'] = pd.to_datetime(df['publication_at'], unit='s', errors='coerce')
+    
+    df_sorted = df.sort_values('publication_date', ascending=False, na_position='last')
+    
+    df_deduped = df_sorted.drop_duplicates(subset=['duplicate_key'], keep='first')
+    
+    duplicates_removed = initial_count - len(df_deduped)
+    
+    if duplicates_removed > 0:
+        print(f"Удалено дубликатов: {duplicates_removed} записей")
+    
+    df_deduped = df_deduped.drop(columns=['address_key', 'area_rounded', 'rooms_rounded', 'duplicate_key'], errors='ignore')
+    
+    print(f"После дедупликации: {len(df_deduped)} записей (было {initial_count})")
+    return df_deduped
+
+
 def clean_outliers(df):
     """Очистка выбросов"""
     initial_count = len(df)
@@ -182,6 +225,12 @@ def clean_outliers(df):
         df = df[
             (df['total_area'] >= 10) & 
             (df['total_area'] <= 500)
+        ].copy()
+        
+        price_per_sqm = df[price_col] / df['total_area']
+        df = df[
+            (price_per_sqm >= 100) & 
+            (price_per_sqm <= 100_000)
         ].copy()
     
     filtered = initial_count - len(df)
@@ -283,6 +332,7 @@ def prepare_data(output_dir=None):
     df = load_data_from_db(engine)
     df = add_price_actual(df)
     df = filter_data(df)
+    df = remove_duplicates(df)
     df = clean_outliers(df)
     df = feature_engineering(df)
     df = fill_missing_values(df)

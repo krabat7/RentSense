@@ -37,7 +37,39 @@ def calculate_quantiles(y_true, y_pred):
     }
 
 
-def prepare_features(df):
+def analyze_correlations(df, target_col='price_actual', min_corr=0.01):
+    """Анализ корреляций с целевой переменной"""
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    
+    if target_col not in numeric_cols:
+        return []
+    
+    correlations = {}
+    for col in numeric_cols:
+        if col != target_col:
+            try:
+                corr = df[[col, target_col]].corr().iloc[0, 1]
+                if not np.isnan(corr):
+                    correlations[col] = abs(corr)
+            except:
+                pass
+    
+    sorted_corr = sorted(correlations.items(), key=lambda x: x[1], reverse=True)
+    
+    print(f"\nКорреляции с {target_col} (топ-20):")
+    for col, corr in sorted_corr[:20]:
+        print(f"  {col}: {corr:.4f}")
+    
+    low_corr_cols = [col for col, corr in correlations.items() if abs(corr) < min_corr]
+    
+    if low_corr_cols:
+        print(f"\nПризнаки с низкой корреляцией (<{min_corr}): {len(low_corr_cols)}")
+        print(f"  Примеры: {low_corr_cols[:10]}")
+    
+    return sorted_corr
+
+
+def prepare_features(df, use_correlation_filter=True, min_correlation=0.01):
     """Подготовка признаков для обучения."""
     target_col = 'price_actual' if 'price_actual' in df.columns else 'price'
     
@@ -49,6 +81,13 @@ def prepare_features(df):
     ]
     
     feature_cols = [col for col in df.columns if col not in exclude_cols]
+    
+    if use_correlation_filter:
+        correlations = analyze_correlations(df, target_col, min_correlation)
+        if correlations:
+            low_corr_cols = [col for col, corr in correlations if abs(corr) < min_correlation]
+            feature_cols = [col for col in feature_cols if col not in low_corr_cols]
+            print(f"\nПосле фильтрации по корреляции: {len(feature_cols)} признаков")
     
     X = df[feature_cols].copy()
     y = df[target_col].copy()
@@ -76,7 +115,7 @@ def prepare_features(df):
                 X[col] = X[col].fillna(0)
             numeric_cols.append(col)
     
-    print(f"Признаков: {len(feature_cols)}")
+    print(f"\nПризнаков: {len(feature_cols)}")
     print(f"  Числовых: {len(numeric_cols)}")
     print(f"  Категориальных: {len(categorical_cols)}")
     
@@ -273,8 +312,14 @@ def train_baseline_models(data_dir=None, models_dir=None):
     print(f"Test: {len(test_df)} записей")
     
     print("\nПодготовка признаков...")
-    X_train, y_train, cat_cols_train, num_cols_train, feature_cols = prepare_features(train_df)
-    X_test, y_test, _, _, _ = prepare_features(test_df)
+    X_train, y_train, cat_cols_train, num_cols_train, feature_cols = prepare_features(
+        train_df, use_correlation_filter=True, min_correlation=0.01
+    )
+    X_test, y_test, _, _, _ = prepare_features(
+        test_df, use_correlation_filter=False
+    )
+    
+    X_test = X_test[X_train.columns]
     
     print(f"\nЦелевая переменная (Train):")
     print(f"  Медиана: {y_train.median():.2f}")
