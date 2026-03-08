@@ -64,7 +64,7 @@ SessionLocal = sessionmaker(bind=engine)
 def init_bot_tables():
     """Создание таблиц для бота. При необходимости добавляет колонку no_offers_sent_at."""
     Base.metadata.create_all(engine)
-    # Миграция: добавить колонку no_offers_sent_at, если её нет (для существующих БД)
+    # Миграция: добавление колонки no_offers_sent_at при отсутствии
     try:
         with engine.connect() as conn:
             conn.execute(text(
@@ -72,7 +72,7 @@ def init_bot_tables():
             ))
             conn.commit()
     except Exception:
-        pass  # колонка уже есть или БД не MySQL
+        pass  # колонка уже есть или СУБД не поддерживает ALTER
 
 
 def get_user(user_id: int):
@@ -178,6 +178,18 @@ def update_user_preferences(user_id: int, updates: dict):
                 current[k] = v
         user.preferences = json.dumps(current, ensure_ascii=False)
         session.commit()
+    finally:
+        session.close()
+
+
+def clear_user_preferences(user_id: int):
+    """Очистить все предпочтения пользователя."""
+    session = SessionLocal()
+    try:
+        user = session.query(BotUser).filter(BotUser.user_id == user_id).first()
+        if user:
+            user.preferences = json.dumps({}, ensure_ascii=False)
+            session.commit()
     finally:
         session.close()
 

@@ -19,6 +19,7 @@ from .database import (
     create_user,
     get_user_preferences,
     update_user_preferences,
+    clear_user_preferences,
     set_user_active,
 )
 
@@ -60,6 +61,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /off — выключить уведомления\n"
         "• /filters — посмотреть свои фильтры\n"
         "• /set ключ значение — задать фильтр (например: /set district Пресненский)\n"
+        "• /reset_filters — сбросить все фильтры\n"
         "• /status — статус и счётчик уведомлений\n\n"
         "Уведомления приходят с 9 до 23 по одному объявлению за раз. Если за день подходящих нет — пришлю подсказку расширить фильтры.",
         parse_mode='Markdown',
@@ -73,7 +75,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/on — включить уведомления\n"
         "/off — выключить уведомления\n"
         "/filters — текущие фильтры\n"
-        "/set ключ значение — установить фильтр. Ключи: district, rooms, area_min, area_max, price_min, price_max, metro, travel_time_max\n"
+        "/set ключ значение — установить фильтр (или /set ключ сброс — сбросить один)\n"
+        "/reset_filters — сбросить все фильтры\n"
         "/status — статус подписки и уведомлений за сегодня"
     )
 
@@ -126,8 +129,16 @@ async def filters_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     prefs = get_user_preferences(user_id)
     msg = "Ваши фильтры:\n\n" + _format_filters(prefs)
-    msg += "\n\nЧтобы изменить: /set ключ значение\nКлючи: district, rooms, area_min, area_max, price_min, price_max, metro, travel_time_max"
+    msg += "\n\nЧтобы изменить: /set ключ значение\nСбросить один: /set ключ сброс\nСбросить все: /reset_filters"
     await update.message.reply_text(msg)
+
+
+async def reset_filters_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сбросить все фильтры."""
+    user_id = update.effective_user.id
+    _get_or_create_user(user_id, update.effective_chat.id)
+    clear_user_preferences(user_id)
+    await update.message.reply_text("Все фильтры сброшены. Будут учитываться все объявления за сегодня.")
 
 
 def _parse_set_value(key: str, raw: str):
@@ -220,6 +231,7 @@ def main():
     application.add_handler(CommandHandler("on", cmd_on))
     application.add_handler(CommandHandler("off", cmd_off))
     application.add_handler(CommandHandler("filters", filters_cmd))
+    application.add_handler(CommandHandler("reset_filters", reset_filters_cmd))
     application.add_handler(CommandHandler("set", set_cmd))
 
     if application.job_queue:
@@ -235,7 +247,7 @@ def main():
         logger.info("Планировщик: алерты каждый час 9–23, сброс в 00:00")
     else:
         logger.warning(
-            "Job queue недоступен (установите python-telegram-bot[job-queue]). "
+            "Job queue недоступен (требуется python-telegram-bot[job-queue]). "
             "Алерты по расписанию отключены."
         )
 
