@@ -15,6 +15,7 @@ SQLAlchemy==2.0.37
 streamlit==1.41.1
 streamlit-folium>=0.15.0
 python-telegram-bot>=21.0
+geopy>=2.4.0
 uvicorn==0.34.0
 lightgbm==4.1.0
 mlflow==2.8.1

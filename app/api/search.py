@@ -51,6 +51,22 @@ class SearchResponse(BaseModel):
     results: List[OfferItem]
 
 
+@router.get('/metro', response_model=List[str])
+async def get_metro_list():
+    """Список уникальных станций метро из БД для выпадающего списка."""
+    try:
+        query = text("""
+            SELECT DISTINCT metro FROM addresses
+            WHERE metro IS NOT NULL AND TRIM(metro) != ''
+            ORDER BY metro
+        """)
+        with engine.connect() as conn:
+            result = conn.execute(query)
+            return [row[0] for row in result.fetchall()]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'Ошибка при загрузке списка метро: {str(e)}')
+
+
 @router.get('/search', response_model=SearchResponse)
 async def search_offers(
     district: Optional[str] = Query(None, description="Район"),
