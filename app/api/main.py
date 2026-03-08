@@ -46,6 +46,23 @@ async def getparams(url: str):
     return response
 
 
+def _align_df_to_model(df: pd.DataFrame, model) -> pd.DataFrame:
+    """Приводит DataFrame к признакам модели: порядок колонок, недостающие заполняются 0."""
+    try:
+        names = getattr(model, 'feature_names_', None) or getattr(model, 'feature_names', lambda: None)()
+        if not names:
+            return df
+    except Exception:
+        return df
+    out = pd.DataFrame(index=df.index)
+    for name in names:
+        if name in df.columns:
+            out[name] = df[name].values
+        else:
+            out[name] = 0
+    return out
+
+
 @router.post('/predict', response_model=PredictResponse)
 async def prediction(request: PredictReq):
     """
@@ -61,38 +78,44 @@ async def prediction(request: PredictReq):
         - price_p90: верхняя граница вилки (P90)
     """
     try:
-        # Преобразуем данные в словарь
-        data_dict = request.data.dict()
-        
+        # Преобразуем данные в словарь (Pydantic v2 model_dump / v1 dict)
+        if hasattr(request.data, 'model_dump'):
+            data_dict = request.data.model_dump()
+        else:
+            data_dict = request.data.dict()
+
         # Подготовка признаков
         df = prepare_features_for_prediction(data_dict)
         df = fill_missing_for_inference(df)
-        
+
         # Если есть квантильные модели, используем их
         if quantile_models and 'P50' in quantile_models:
             predictions = {}
             for quantile in ['P10', 'P50', 'P90']:
                 if quantile in quantile_models:
-                    pred = quantile_models[quantile].predict(df)
+                    m = quantile_models[quantile]
+                    pred_df = _align_df_to_model(df, m)
+                    pred = m.predict(pred_df)
                     predictions[quantile.lower()] = float(pred[0])
-            
             return PredictResponse(
                 price=predictions.get('p50', 0.0),
                 price_p10=predictions.get('p10'),
                 price_p90=predictions.get('p90')
             )
-        
+
         # Иначе используем baseline модель
-        elif baseline_model:
-            pred = baseline_model.predict(df)
+        if baseline_model:
+            pred_df = _align_df_to_model(df, baseline_model)
+            pred = baseline_model.predict(pred_df)
             return PredictResponse(price=float(pred[0]))
-        
-        else:
-            raise HTTPException(status_code=500, detail='Модели не загружены')
-    
+
+        raise HTTPException(status_code=500, detail='Модели не загружены')
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Ошибка при предсказании: {e}")
-        raise HTTPException(status_code=500, detail=f'Ошибка при предсказании: {str(e)}')
+        logger.exception("Ошибка при предсказании")
+        raise HTTPException(status_code=500, detail='Ошибка при предсказании')
 
 
 from .search import router as search_router

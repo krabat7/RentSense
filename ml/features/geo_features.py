@@ -21,8 +21,12 @@ def calculate_distance_from_center(lat, lng, center_lat=55.753600, center_lng=37
 def add_geo_features_v0(df):
     """Добавление географических фичей в датафрейм."""
     if 'coordinates' in df.columns:
-        df['lat'] = df['coordinates'].apply(lambda x: x['lat'] if isinstance(x, dict) else None)
-        df['lng'] = df['coordinates'].apply(lambda x: x['lng'] if isinstance(x, dict) else None)
+        df['lat'] = df['coordinates'].apply(
+            lambda x: x.get('lat') if isinstance(x, dict) else None
+        )
+        df['lng'] = df['coordinates'].apply(
+            lambda x: x.get('lng') if isinstance(x, dict) else None
+        )
         df['distance_from_center'] = df.apply(
             lambda row: calculate_distance_from_center(row['lat'], row['lng'])
             if pd.notna(row['lat']) and pd.notna(row['lng']) else None,
