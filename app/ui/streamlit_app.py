@@ -108,15 +108,20 @@ def fetch_metro_list() -> List[str]:
 
 
 def geocode_address(address: str) -> Optional[Tuple[float, float]]:
-    """Геокодинг адреса через Nominatim (Москва)."""
+    """Геокодинг адреса через Nominatim (Москва). Требует валидный User-Agent и не более 1 запроса/сек."""
     if not address or not address.strip():
         return None
     try:
         from geopy.geocoders import Nominatim
         from geopy.extra.rate_limiter import RateLimiter
-        geolocator = Nominatim(user_agent="rentsense_app")
-        geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
-        location = geocode(f"{address.strip()}, Москва, Россия")
+        # Nominatim требует явный User-Agent, иначе 403/429; таймаут чтобы не зависать
+        geolocator = Nominatim(
+            user_agent="RentSense/1.0 (rentsense-app; Moscow rent price prediction)",
+            timeout=10,
+        )
+        geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1.1)
+        query = f"{address.strip()}, Москва, Россия"
+        location = geocode(query)
         if location:
             return (location.latitude, location.longitude)
     except Exception:
@@ -220,30 +225,8 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any]):
     coords = data.get("coordinates") if isinstance(data.get("coordinates"), dict) else None
     lat = coords.get("lat", CENTER_MOSCOW[0]) if coords else CENTER_MOSCOW[0]
     lng = coords.get("lng", CENTER_MOSCOW[1]) if coords else CENTER_MOSCOW[1]
-
-    total = data.get("total_area")
-    search_filters = {"limit": 20}
-    if total is not None and total > 0:
-        search_filters["area_min"] = max(0, total - 10)
-        search_filters["area_max"] = total + 10
-    if data.get("rooms_count") is not None:
-        search_filters["rooms"] = data.get("rooms_count")
-    if data.get("district") and str(data.get("district")).strip():
-        search_filters["district"] = data.get("district")
-
-    search_resp, search_err = call_search_api(search_filters)
-    offers_list = search_resp.get("results", []) if search_resp else []
-    if search_err and not offers_list:
-        st.caption(search_err)
-
-    m = create_map(lat, lng, offers_list)
+    m = create_map(lat, lng, None)
     folium_static(m)
-    if offers_list:
-        st.subheader("Похожие объявления")
-        df = pd.DataFrame(offers_list)
-        cols = [c for c in ['price', 'total_area', 'rooms_count', 'district', 'metro'] if c in df.columns]
-        if cols:
-            st.dataframe(df[cols], use_container_width=True)
 
 
 # Загрузка списка метро один раз
@@ -267,7 +250,6 @@ if mode == "Ввести параметры":
         with col2:
             floors_count = st.number_input("Этажей в доме *", min_value=1, max_value=100, value=10)
         total_area = st.number_input("Общая площадь (м²) *", min_value=10.0, max_value=500.0, value=50.0, step=0.5)
-        living_area = st.number_input("Жилая площадь (м²)", min_value=1.0, max_value=500.0, value=30.0, step=0.5)
         room_label = st.selectbox("Комнаты *", [r[0] for r in ROOM_OPTIONS], index=1)
         rooms_count, flat_type = next((r[1], r[2]) for r in ROOM_OPTIONS if r[0] == room_label)
         repair_label = st.selectbox("Тип ремонта *", [r[0] for r in REPAIR_OPTIONS], index=0)
@@ -296,6 +278,7 @@ if mode == "Ввести параметры":
                         st.warning("Не удалось определить координаты по адресу. Используется центр Москвы.")
 
                 kitchen_default = (total_area * 0.15) if total_area else 10.0
+                living_default = (total_area * 0.6) if total_area else 30.0
                 data = {
                     "district": district or None,
                     "street": None,
@@ -303,7 +286,7 @@ if mode == "Ввести параметры":
                     "floor_number": int(floor_number),
                     "floors_count": int(floors_count),
                     "total_area": float(total_area),
-                    "living_area": float(living_area),
+                    "living_area": float(living_default),
                     "kitchen_area": float(kitchen_default),
                     "rooms_count": int(rooms_count),
                     "flat_type": flat_type,
