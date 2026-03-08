@@ -110,8 +110,8 @@ def fetch_metro_list() -> List[str]:
         return []
 
 
-def _geocode_nominatim(address: str) -> Optional[Tuple[float, float]]:
-    """Nominatim (OSM). С сервера может не открываться или давать 403."""
+def _geocode_nominatim(address: str) -> Tuple[Optional[Tuple[float, float]], Optional[str]]:
+    """Nominatim (OSM). Возвращает (координаты или None, сообщение об ошибке)."""
     try:
         from geopy.geocoders import Nominatim
         from geopy.extra.rate_limiter import RateLimiter
@@ -123,40 +123,47 @@ def _geocode_nominatim(address: str) -> Optional[Tuple[float, float]]:
         for query in (f"{address.strip()}, Москва, Россия", f"Москва, {address.strip()}"):
             location = geocode(query)
             if location:
-                return (location.latitude, location.longitude)
+                return ((location.latitude, location.longitude), None)
     except Exception as e:
         logger.warning("Nominatim geocode failed: %s", e)
-    return None
+        return None, str(e)
+    return None, "Адрес не найден (Nominatim)"
 
 
-def _geocode_yandex(address: str, api_key: str) -> Optional[Tuple[float, float]]:
-    """Яндекс.Геокодер — лучше по российским адресам. Нужен API-ключ в YANDEX_GEOCODER_API_KEY."""
+def _geocode_yandex(address: str, api_key: str) -> Tuple[Optional[Tuple[float, float]], Optional[str]]:
+    """Яндекс.Геокодер. Возвращает (координаты или None, сообщение об ошибке)."""
     if not api_key or not api_key.strip():
-        return None
+        return None, "Не задан YANDEX_GEOCODER_API_KEY"
     try:
         from geopy.geocoders import Yandex
         geolocator = Yandex(api_key=api_key.strip(), timeout=10)
         location = geolocator.geocode(f"{address.strip()}, Москва")
         if location:
-            return (location.latitude, location.longitude)
+            return ((location.latitude, location.longitude), None)
     except Exception as e:
         logger.warning("Yandex geocode failed: %s", e)
-    return None
+        return None, str(e)
+    return None, "Адрес не найден (Яндекс)"
 
 
-def geocode_address(address: str) -> Optional[Tuple[float, float]]:
-    """Геокодинг: при заданном YANDEX_GEOCODER_API_KEY — сначала Яндекс, иначе Nominatim."""
+def geocode_address(address: str) -> Tuple[Optional[Tuple[float, float]], Optional[str]]:
+    """Геокодинг: при заданном YANDEX_GEOCODER_API_KEY — сначала Яндекс, иначе Nominatim.
+    Возвращает (координаты или None, сообщение об ошибке при неудаче)."""
     if not address or not address.strip():
-        return None
+        return None, "Пустой адрес"
     api_key = os.getenv("YANDEX_GEOCODER_API_KEY", "").strip()
+    last_error: Optional[str] = None
     if api_key:
-        result = _geocode_yandex(address, api_key)
+        result, err = _geocode_yandex(address, api_key)
         if result is not None:
-            return result
-    result = _geocode_nominatim(address)
+            return result, None
+        last_error = err
+    result, err = _geocode_nominatim(address)
     if result is not None:
-        return result
-    return None
+        return result, None
+    if last_error and err:
+        return None, f"Яндекс: {last_error}. Fallback Nominatim: {err}"
+    return None, last_error or err or "Не удалось определить координаты"
 
 
 def create_map(lat: float, lng: float, similar_offers: list = None):
@@ -301,11 +308,13 @@ if mode == "Ввести параметры":
                 address_to_geocode = address_input.strip() if address_input else (f"Москва, {district}".strip() if district else None)
                 lat, lng = CENTER_MOSCOW[0], CENTER_MOSCOW[1]
                 if address_to_geocode:
-                    coords = geocode_address(address_to_geocode)
+                    coords, err_msg = geocode_address(address_to_geocode)
                     if coords:
                         lat, lng = coords
                     else:
                         st.warning("Не удалось определить координаты по адресу. Используется центр Москвы.")
+                        if err_msg:
+                            st.caption(f"Причина: {err_msg}")
 
                 kitchen_default = (total_area * 0.15) if total_area else 10.0
                 living_default = (total_area * 0.6) if total_area else 30.0
