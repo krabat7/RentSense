@@ -114,6 +114,10 @@ async def prediction(request: PredictReq):
         df = prepare_features_for_prediction(data_dict)
         df = fill_missing_for_inference(df)
 
+        def _clip_price(p: float) -> float:
+            """Цена не может быть отрицательной."""
+            return max(0.0, float(p)) if p is not None else 0.0
+
         # Если есть квантильные модели, используем их
         if quantile_models and 'P50' in quantile_models:
             predictions = {}
@@ -122,7 +126,7 @@ async def prediction(request: PredictReq):
                     m = quantile_models[quantile]
                     pred_df = _align_df_to_model(df, m)
                     pred = m.predict(pred_df)
-                    predictions[quantile.lower()] = float(pred[0])
+                    predictions[quantile.lower()] = _clip_price(pred[0])
             return PredictResponse(
                 price=predictions.get('p50', 0.0),
                 price_p10=predictions.get('p10'),
@@ -133,7 +137,7 @@ async def prediction(request: PredictReq):
         if baseline_model:
             pred_df = _align_df_to_model(df, baseline_model)
             pred = baseline_model.predict(pred_df)
-            return PredictResponse(price=float(pred[0]))
+            return PredictResponse(price=_clip_price(pred[0]))
 
         raise HTTPException(status_code=500, detail='Модели не загружены')
 
