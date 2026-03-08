@@ -88,6 +88,7 @@ services:
       TZ: Europe/Moscow
       PYTHONPATH: /app
       API_BASE_URL: http://backend:8000/api
+      YANDEX_GEOCODER_API_KEY: ${YANDEX_GEOCODER_API_KEY:-}
     volumes:
       - ./:/app
       - ./logs:/app/logs
