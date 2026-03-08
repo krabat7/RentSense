@@ -37,27 +37,29 @@ def _extract_flat_id(url: str) -> str | None:
     return match.group(1) if match else None
 
 
-@router.get('/getparams', response_model=Params)
+@router.get('/getparams')
 async def getparams(url: str):
     """Извлечение параметров объявления из URL Циана."""
-    flat_id = _extract_flat_id(url)
-    if not flat_id:
-        raise HTTPException(status_code=400, detail='Неверный формат объявления')
-    data = await to_thread(apartPage, [flat_id], dbinsert=False)
-    if data is None or not isinstance(data, dict):
-        raise HTTPException(
-            status_code=400,
-            detail='Объявление недоступно или снято с публикации. Проверьте ссылку.',
-        )
     try:
+        flat_id = _extract_flat_id(url)
+        if not flat_id:
+            raise HTTPException(status_code=400, detail='Неверный формат объявления')
+        data = await to_thread(apartPage, [flat_id], dbinsert=False)
+        if data is None or not isinstance(data, dict):
+            raise HTTPException(
+                status_code=400,
+                detail='Объявление недоступно или снято с публикации. Проверьте ссылку.',
+            )
         data = Params(**data)
         response = await to_thread(preparams, data)
         return response
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("getparams failed for flat_id=%s: %s", flat_id, e)
+        logger.exception("getparams failed: %s", e)
         raise HTTPException(
             status_code=400,
-            detail='Не удалось разобрать данные объявления. Проверьте ссылку и доступность.',
+            detail='Не удалось загрузить объявление. Проверьте ссылку и доступность.',
         )
 
 
