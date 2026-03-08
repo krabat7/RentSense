@@ -274,8 +274,36 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any]):
     price = result.get("price", 0) or 0
     total_area = data.get("total_area")
     price_per_sqm = (price / total_area) if total_area and total_area > 0 else None
+    real_price = data.get("price")
+    if real_price is not None:
+        try:
+            real_price = float(real_price)
+        except (TypeError, ValueError):
+            real_price = None
 
-    # Метрики: только предсказанная цена и цена за м²
+    # В режиме «по ссылке»: реальная стоимость, выгодно/не выгодно, разница
+    if real_price is not None and real_price > 0:
+        diff_rub = price - real_price
+        diff_pct = (diff_rub / real_price * 100) if real_price else 0
+        is_good = diff_rub > 0
+        st.subheader("Сравнение с реальной ценой")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Реальная стоимость", f"{real_price:,.0f} руб".replace(",", " "))
+        with c2:
+            st.metric("Предсказанная стоимость", f"{price:,.0f} руб".replace(",", " "))
+        with c3:
+            if is_good:
+                st.metric("Выгодно", f"+{diff_rub:,.0f} руб".replace(",", " "), f"~{diff_pct:+.0f}%")
+            else:
+                st.metric("Не выгодно", f"{diff_rub:,.0f} руб".replace(",", " "), f"~{diff_pct:.0f}%")
+        if is_good:
+            st.success(f"По модели объявление выгодное: заявленная цена ниже прогноза на **{diff_rub:,.0f}** руб (~**{diff_pct:.0f}%**).".replace(",", " "))
+        else:
+            st.warning(f"По модели объявление не выгодное: заявленная цена выше прогноза на **{-diff_rub:,.0f}** руб (~**{-diff_pct:.0f}%**).".replace(",", " "))
+        st.divider()
+
+    # Метрики: предсказанная цена и цена за м²
     cols = st.columns(2)
     with cols[0]:
         st.metric("Предсказанная цена", f"{price:,.0f} руб".replace(",", " "))
