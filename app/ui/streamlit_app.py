@@ -43,6 +43,8 @@ MATERIAL_OPTIONS = [
     ("Блочный", "block"),
     ("Другой", "none"),
 ]
+# Комнаты: отдельно студия (flat_type=studio, rooms_count=1), затем 1–9 комнат (flat_type=rooms)
+ROOM_OPTIONS = [("Студия", 1, "studio")] + [(str(i), i, "rooms") for i in range(1, 10)]
 
 # Центр Москвы (запасной вариант при ошибке геокодинга)
 CENTER_MOSCOW = (55.7558, 37.6173)
@@ -54,7 +56,8 @@ st.set_page_config(
 )
 
 st.title("🏠 RentSense - Предсказание цены аренды")
-st.markdown("Оценка рыночной стоимости аренды квартиры в Москве: введите параметры или ссылку на объявление Циан.")
+st.caption("По Москве.")
+st.markdown("Оценка рыночной стоимости аренды: введите параметры или ссылку на объявление Циан.")
 
 
 def call_predict_api(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -255,18 +258,18 @@ mode = st.radio("Режим", ["Ввести параметры", "По ссыл
 if mode == "Ввести параметры":
     with st.sidebar:
         st.header("Параметры квартиры")
-        st.caption("Поля, отмеченные красной звёздочкой (*), обязательны. Площадь кухни не запрашивается — модель учитывает общую площадь.")
         st.markdown("<span style='color:red'>*</span> — обязательные поля", unsafe_allow_html=True)
-        address_input = st.text_input("Адрес * (район или улица, дом)", placeholder="Москва, Хамовники или ул. Льва Толстого, 5")
-        district = st.text_input("Район * (если адрес не указан)", placeholder="Хамовники")
+        address_input = st.text_input("Адрес *", placeholder="ул. Льва Толстого, 5")
+        district = st.text_input("Район *", placeholder="Хамовники")
         col1, col2 = st.columns(2)
         with col1:
             floor_number = st.number_input("Этаж *", min_value=1, max_value=100, value=5)
         with col2:
             floors_count = st.number_input("Этажей в доме *", min_value=1, max_value=100, value=10)
         total_area = st.number_input("Общая площадь (м²) *", min_value=10.0, max_value=500.0, value=50.0, step=0.5)
-        living_area = st.number_input("Жилая площадь (м²)", min_value=1.0, max_value=500.0, value=30.0, step=0.5, help="Дополнительный признак; сильно коррелирует с общей площадью")
-        rooms_count = st.selectbox("Количество комнат *", [1, 2, 3, 4, 5, 6, 7, 8, 9], index=1)
+        living_area = st.number_input("Жилая площадь (м²)", min_value=1.0, max_value=500.0, value=30.0, step=0.5)
+        room_label = st.selectbox("Комнаты *", [r[0] for r in ROOM_OPTIONS], index=1)
+        rooms_count, flat_type = next((r[1], r[2]) for r in ROOM_OPTIONS if r[0] == room_label)
         repair_label = st.selectbox("Тип ремонта *", [r[0] for r in REPAIR_OPTIONS], index=0)
         repair_type = next(r[1] for r in REPAIR_OPTIONS if r[0] == repair_label)
         material_label = st.selectbox("Тип дома *", [m[0] for m in MATERIAL_OPTIONS], index=0)
@@ -303,6 +306,7 @@ if mode == "Ввести параметры":
                     "living_area": float(living_area),
                     "kitchen_area": float(kitchen_default),
                     "rooms_count": int(rooms_count),
+                    "flat_type": flat_type,
                     "repair_type": repair_type,
                     "material_type": material_type,
                     "build_year": int(build_year),
