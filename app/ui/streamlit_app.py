@@ -48,6 +48,8 @@ MATERIAL_OPTIONS = [
 ]
 # Комнаты: отдельно студия (flat_type=studio, rooms_count=1), затем 1–9 комнат (flat_type=rooms)
 ROOM_OPTIONS = [("Студия", 1, "studio")] + [(str(i), i, "rooms") for i in range(1, 10)]
+REPAIR_LABELS = {v: k for k, v in REPAIR_OPTIONS}
+MATERIAL_LABELS = {v: k for k, v in MATERIAL_OPTIONS}
 
 # Центр Москвы (запасной вариант при ошибке геокодинга)
 CENTER_MOSCOW = (55.7558, 37.6173)
@@ -235,29 +237,80 @@ def validate_for_predict(data: Dict[str, Any]) -> List[str]:
     return missing
 
 
-def render_result(result: Dict[str, Any], data: Dict[str, Any]):
-    """Общий блок отображения результата предсказания и карты."""
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Предсказанная цена (P50)", f"{result.get('price', 0):,.0f} руб")
-    if result.get('price_p10') is not None and result.get('price_p90') is not None:
-        with col2:
-            st.metric("Нижняя граница (P10)", f"{result.get('price_p10', 0):,.0f} руб")
-        with col3:
-            st.metric("Верхняя граница (P90)", f"{result.get('price_p90', 0):,.0f} руб")
+def _format_param(value: Any, key: str) -> str:
+    """Форматирование значения параметра для отображения."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return "—"
+    if key == "repair_type":
+        return REPAIR_LABELS.get(value, str(value))
+    if key == "material_type":
+        return MATERIAL_LABELS.get(value, str(value))
+    if key == "flat_type":
+        return "Студия" if value == "studio" else str(value)
+    if isinstance(value, float) and key == "total_area":
+        return f"{value:.1f} м²"
+    return str(value)
 
-    if result.get('price_p10') is not None and result.get('price_p90') is not None:
+
+def render_result(result: Dict[str, Any], data: Dict[str, Any]):
+    """Общий блок отображения результата предсказания: метрики, графики, параметры, карта."""
+    price = result.get("price", 0) or 0
+    p10 = result.get("price_p10")
+    p90 = result.get("price_p90")
+    total_area = data.get("total_area")
+    price_per_sqm = (price / total_area) if total_area and total_area > 0 else None
+
+    # Метрики в одну строку
+    cols = st.columns(4)
+    with cols[0]:
+        st.metric("Предсказанная цена (P50)", f"{price:,.0f} руб".replace(",", " "))
+    with cols[1]:
+        st.metric("Нижняя граница (P10)", f"{(p10 or 0):,.0f} руб".replace(",", " ") if p10 is not None else "—")
+    with cols[2]:
+        st.metric("Верхняя граница (P90)", f"{(p90 or 0):,.0f} руб".replace(",", " ") if p90 is not None else "—")
+    with cols[3]:
+        st.metric("Цена за м²", f"{price_per_sqm:,.0f} руб/м²".replace(",", " ") if price_per_sqm else "—")
+
+    # График вилки цен
+    if p10 is not None and p90 is not None:
         fig = go.Figure()
         fig.add_trace(go.Bar(
-            x=['P10', 'P50', 'P90'],
-            y=[result['price_p10'], result['price'], result['price_p90']],
-            marker_color=['lightblue', 'blue', 'lightblue'],
-            text=[f"{result['price_p10']:,.0f}", f"{result['price']:,.0f}", f"{result['price_p90']:,.0f}"],
-            textposition='outside'
+            x=["P10", "P50", "P90"],
+            y=[p10, price, p90],
+            marker_color=["#90CAF9", "#1976D2", "#90CAF9"],
+            text=[f"{p10:,.0f}".replace(",", " "), f"{price:,.0f}".replace(",", " "), f"{p90:,.0f}".replace(",", " ")],
+            textposition="outside",
         ))
-        fig.update_layout(title="Вилка цен (P10 - P50 - P90)", yaxis_title="Цена (руб)", height=400)
+        fig.update_layout(
+            title="Вилка цен (квантили P10 — медиана P50 — P90)",
+            yaxis_title="Цена (руб)",
+            height=320,
+            margin=dict(t=50, b=50),
+            showlegend=False,
+        )
         st.plotly_chart(fig, use_container_width=True)
 
+    # Исходные параметры (сводка)
+    st.subheader("Исходные параметры")
+    param_keys = [
+        ("total_area", "Площадь"),
+        ("rooms_count", "Комнат"),
+        ("floor_number", "Этаж"),
+        ("floors_count", "Этажей в доме"),
+        ("build_year", "Год постройки"),
+        ("district", "Район"),
+        ("metro", "Метро"),
+        ("travel_time", "Время до метро (мин)"),
+        ("repair_type", "Тип ремонта"),
+        ("material_type", "Тип дома"),
+    ]
+    disp = [_format_param(data.get(k), k) for k, _ in param_keys]
+    param_df = pd.DataFrame(
+        {"Параметр": [label for _, label in param_keys], "Значение": disp}
+    )
+    st.dataframe(param_df, use_container_width=True, hide_index=True)
+
+    # Карта
     st.subheader("Карта")
     coords = data.get("coordinates") if isinstance(data.get("coordinates"), dict) else None
     lat = coords.get("lat", CENTER_MOSCOW[0]) if coords else CENTER_MOSCOW[0]
