@@ -449,29 +449,36 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                 if not respTry:
                     logging.warning(f'getResponse: No retries left, returning None')
                     return None
-                
-                # Блокируем прокси при ошибках
-                if status in (403, 429):
-                    # Уменьшено время блокировки для более быстрого возврата прокси в пул
-                    block_time = 15 * 60  # 15 минут блокировки (уменьшено с 20)
-                    proxyDict[proxy] = time.time() + block_time
-                    proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
-                    if proxyErrorCount[proxy] >= 2:
-                        proxyBlockedTime[proxy] = time.time()
-                        block_time = 20 * 60  # 20 минут при повторных ошибках (уменьшено с 30)
+
+                # Блокируем прокси при ошибках (только если прокси использовался)
+                if proxy:
+                    if status in (403, 429):
+                        block_time = 15 * 60
                         proxyDict[proxy] = time.time() + block_time
-                    logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
-                    # Делаем паузу перед следующей попыткой после 403/429
-                    if respTry > 1:
-                        delay = random.uniform(10, 20)  # 10-20 секунд пауза
-                        logging.info(f'Waiting {delay:.1f}s before retry after {status}')
-                        time.sleep(delay)
-                elif status == 404:
+                        proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
+                        if proxyErrorCount[proxy] >= 2:
+                            proxyBlockedTime[proxy] = time.time()
+                            block_time = 20 * 60
+                            proxyDict[proxy] = time.time() + block_time
+                        logging.warning(f'getResponse: Proxy {proxy[:50]}... blocked for {block_time//60} min (status {status})')
+                        if respTry > 1:
+                            delay = random.uniform(10, 20)
+                            logging.info(f'Waiting {delay:.1f}s before retry after {status}')
+                            time.sleep(delay)
+                    elif status != 404:
+                        proxyDict[proxy] = time.time() + (1 * 60)
+                elif status in (403, 429):
+                    # Без прокси 403/429 — один раз пробуем с прокси (для режима «по ссылке»)
+                    if not use_proxy and respTry > 0:
+                        logging.info(f'getResponse: Status {status} without proxy, retrying with proxy')
+                        return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy=True)
+                    logging.warning(f'getResponse: Status {status} without proxy, returning None')
+                    return None
+
+                if status == 404:
                     logging.info(f'getResponse: Page {page} not found (404)')
                     return None
-                else:
-                    proxyDict[proxy] = time.time() + (1 * 60)  # 1 минута блокировки
-                
+
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
             # Успешный запрос - проверяем на CAPTCHA ДО закрытия страницы
@@ -622,12 +629,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     return 'CAPTCHA'
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
-            # Обновляем время блокировки прокси после успешного запроса
-            # НЕ блокируем прокси после успешного запроса - пусть ротируется естественно
-            proxyDict[proxy] = time.time() + 0  # Не блокируем прокси
-            proxyErrorCount[proxy] = 0  # Сбрасываем счетчик ошибок
-            # Сбрасываем счетчик ошибок подключения при успешном запросе (прокси работает!)
-            proxyConnectionErrors[proxy] = 0
+            # Обновляем состояние прокси после успешного запроса (только если прокси использовался)
+            if proxy:
+                proxyDict[proxy] = time.time() + 0
+                proxyErrorCount[proxy] = 0
+                proxyConnectionErrors[proxy] = 0
             # Сбрасываем счетчик CAPTCHA при успешном запросе
             if page in _captcha_count:
                 _captcha_count[page] = 0
@@ -659,10 +665,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             
             if not respTry:
                 return None
-            
-            proxyDict[proxy] = time.time() + (1 * 60)
+
+            if proxy:
+                proxyDict[proxy] = time.time() + (1 * 60)
             return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
-            
+
     except Exception as e:
         error_msg = str(e)
         logging.error(f'getResponse: Exception for proxy {proxy[:50] if proxy else "none"}...: {e}')
