@@ -481,7 +481,7 @@ else:
             url_for_api = f"https://www.cian.ru/rent/flat/{flat_id}/"
             with st.spinner("Загрузка данных объявления..."):
                 try:
-                    resp = requests.get(f"{API_BASE_URL}/getparams", params={"url": url_for_api}, timeout=30)
+                    resp = requests.get(f"{API_BASE_URL}/getparams", params={"url": url_for_api}, timeout=90)
                     resp.raise_for_status()
                     flat = resp.json()
                 except requests.exceptions.HTTPError as e:

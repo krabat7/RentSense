@@ -938,7 +938,7 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
             logging.info(f"Apart page {page} skipped after {retry_count} failed attempts")
             continue
         
-        response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2, use_proxy=dbinsert)  # Без прокси для API «по ссылке»
+        response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2)  # Прокси как у парсера — стабильнее и в пределах таймаута
         
         # Обработка CAPTCHA - пропускаем объявление
         if response == 'CAPTCHA':
