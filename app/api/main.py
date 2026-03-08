@@ -47,17 +47,32 @@ async def getparams(url: str):
 
 
 def _align_df_to_model(df: pd.DataFrame, model) -> pd.DataFrame:
-    """Приводит DataFrame к признакам модели: порядок колонок, недостающие заполняются 0."""
+    """Приводит DataFrame к признакам модели: порядок колонок, недостающие — 0.
+    Числовые признаки модели не должны содержать строки (например 'unknown') — приводим к float, иначе CatBoost падает."""
     try:
         names = getattr(model, 'feature_names_', None) or getattr(model, 'feature_names', lambda: None)()
         if not names:
             return df
+        cat_indices = getattr(model, 'get_cat_feature_indices', lambda: [])()
+        cat_indices = cat_indices if isinstance(cat_indices, (list, tuple)) else []
+        cat_names = {names[i] for i in cat_indices if 0 <= i < len(names)}
     except Exception:
-        return df
+        cat_names = set()
+        try:
+            names = getattr(model, 'feature_names_', None)
+        except Exception:
+            return df
+        if not names:
+            return df
     out = pd.DataFrame(index=df.index)
     for name in names:
         if name in df.columns:
-            out[name] = df[name].values
+            ser = df[name]
+            if name in cat_names:
+                out[name] = ser.values
+            else:
+                # Модель ожидает числовой признак — строки вроде 'unknown' приводят к float, пропуски → 0
+                out[name] = pd.to_numeric(ser, errors='coerce').fillna(0).values
         else:
             out[name] = 0
     return out
