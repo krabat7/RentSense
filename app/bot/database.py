@@ -134,6 +134,16 @@ def get_sent_cian_ids_today(user_id: int):
         session.close()
 
 
+def get_sent_cian_ids(user_id: int):
+    """Возвращает set cian_id объявлений, когда-либо отправленных этому пользователю (дедупликация навсегда)."""
+    session = SessionLocal()
+    try:
+        rows = session.query(SentAlert.cian_id).filter(SentAlert.user_id == user_id).all()
+        return {r[0] for r in rows}
+    finally:
+        session.close()
+
+
 def reset_daily_alerts():
     """Сброс счетчика алертов за день (вызывается в начале нового дня)."""
     session = SessionLocal()
