@@ -3,7 +3,8 @@
 
 Таблицы: bot_users, sent_alerts
 """
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text
+import json
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -25,6 +26,7 @@ class BotUser(Base):
     last_alert_time = Column(DateTime, nullable=True)
     alerts_today = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
+    no_offers_sent_at = Column(DateTime, nullable=True)  # когда отправили "нет новых объявлений"
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -60,8 +62,17 @@ SessionLocal = sessionmaker(bind=engine)
 
 
 def init_bot_tables():
-    """Создание таблиц для бота."""
+    """Создание таблиц для бота. При необходимости добавляет колонку no_offers_sent_at."""
     Base.metadata.create_all(engine)
+    # Миграция: добавить колонку no_offers_sent_at, если её нет (для существующих БД)
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE bot_users ADD COLUMN no_offers_sent_at DATETIME NULL"
+            ))
+            conn.commit()
+    except Exception:
+        pass  # колонка уже есть или БД не MySQL
 
 
 def get_user(user_id: int):
@@ -109,11 +120,96 @@ def mark_alert_sent(user_id: int, cian_id: int):
         session.close()
 
 
+def get_sent_cian_ids_today(user_id: int):
+    """Возвращает set cian_id объявлений, по которым уже отправлен алерт сегодня."""
+    session = SessionLocal()
+    try:
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        rows = session.query(SentAlert.cian_id).filter(
+            SentAlert.user_id == user_id,
+            SentAlert.sent_at >= today_start,
+        ).all()
+        return {r[0] for r in rows}
+    finally:
+        session.close()
+
+
 def reset_daily_alerts():
     """Сброс счетчика алертов за день (вызывается в начале нового дня)."""
     session = SessionLocal()
     try:
-        session.query(BotUser).update({BotUser.alerts_today: 0})
+        session.query(BotUser).update({
+            BotUser.alerts_today: 0,
+            BotUser.no_offers_sent_at: None,
+        })
         session.commit()
     finally:
         session.close()
+
+
+def get_user_preferences(user_id: int) -> dict:
+    """Читает предпочтения пользователя из JSON. Возвращает пустой dict, если нет."""
+    user = get_user(user_id)
+    if not user or not user.preferences:
+        return {}
+    try:
+        return json.loads(user.preferences)
+    except Exception:
+        return {}
+
+
+def update_user_preferences(user_id: int, updates: dict):
+    """Обновляет предпочтения пользователя (слияние с текущими)."""
+    session = SessionLocal()
+    try:
+        user = session.query(BotUser).filter(BotUser.user_id == user_id).first()
+        if not user:
+            return
+        current = {}
+        if user.preferences:
+            try:
+                current = json.loads(user.preferences)
+            except Exception:
+                pass
+        for k, v in updates.items():
+            if v is None or v == '':
+                current.pop(k, None)
+            else:
+                current[k] = v
+        user.preferences = json.dumps(current, ensure_ascii=False)
+        session.commit()
+    finally:
+        session.close()
+
+
+def set_user_active(user_id: int, is_active: bool):
+    """Включить/выключить уведомления для пользователя."""
+    session = SessionLocal()
+    try:
+        user = session.query(BotUser).filter(BotUser.user_id == user_id).first()
+        if user:
+            user.is_active = is_active
+            session.commit()
+    finally:
+        session.close()
+
+
+def mark_no_offers_message_sent(user_id: int):
+    """Отметить, что пользователю отправлено сообщение «нет новых объявлений» сегодня."""
+    session = SessionLocal()
+    try:
+        user = session.query(BotUser).filter(BotUser.user_id == user_id).first()
+        if user:
+            user.no_offers_sent_at = datetime.now()
+            session.commit()
+    finally:
+        session.close()
+
+
+def should_send_no_offers_message(user: BotUser) -> bool:
+    """Нужно ли отправить сообщение «нет новых объявлений» (раз в день, если alerts_today == 0)."""
+    if user.alerts_today != 0:
+        return False
+    if not user.no_offers_sent_at:
+        return True
+    return user.no_offers_sent_at.date() < datetime.now().date()

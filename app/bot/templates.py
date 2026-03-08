@@ -49,6 +49,15 @@ def format_offer_message(offer: dict) -> str:
     # Формирование сообщения
     message = f"🏠 *Новое объявление*\n\n"
     message += f"💰 *Цена:* {price:,.0f} руб\n"
+
+    predicted_price = offer.get('predicted_price')
+    if predicted_price is not None and predicted_price > 0:
+        message += f"📊 *Прогноз модели:* {predicted_price:,.0f} руб\n"
+        profit = offer.get('profit')
+        if profit is not None and profit > 0:
+            pct = (profit / price * 100) if price else 0
+            message += f"✅ *Выгода:* +{profit:,.0f} руб (~{pct:.0f}%)\n"
+    message += "\n"
     
     if total_area:
         message += f"📐 *Площадь:* {total_area:.1f} м²\n"
