@@ -253,57 +253,56 @@ def _format_param(value: Any, key: str) -> str:
     return str(value)
 
 
-def _approx_bounds(price: float, margin: float = 0.15) -> Tuple[float, float]:
-    """Приближённые границы при отсутствии квантильных моделей."""
-    return (max(0, price * (1 - margin)), price * (1 + margin))
+def _median_price_per_sqm_from_search(filters: Dict[str, Any]) -> Optional[float]:
+    """Медианная цена за м² по похожим объявлениям из /search (для подстановки в модель по району)."""
+    resp, _ = call_search_api(filters)
+    if not resp:
+        return None
+    results = resp.get("results", [])
+    per_sqm = []
+    for o in results:
+        p, a = o.get("price"), o.get("total_area")
+        if p is not None and a and float(a) > 0:
+            per_sqm.append(float(p) / float(a))
+    if len(per_sqm) < 3:
+        return None
+    return float(pd.Series(per_sqm).median())
 
 
 def render_result(result: Dict[str, Any], data: Dict[str, Any]):
-    """Общий блок отображения результата предсказания: метрики, графики, параметры, карта."""
+    """Общий блок отображения результата предсказания: цена, параметры, графики по похожим, карта."""
     price = result.get("price", 0) or 0
-    p10 = result.get("price_p10")
-    p90 = result.get("price_p90")
     total_area = data.get("total_area")
     price_per_sqm = (price / total_area) if total_area and total_area > 0 else None
 
-    # Если квантильные модели не загружены — показываем приближённый диапазон
-    use_approx = p10 is None or p90 is None
-    if use_approx:
-        p10, p90 = _approx_bounds(price)
-
-    # Метрики в одну строку
-    cols = st.columns(4)
+    # Метрики: только предсказанная цена и цена за м²
+    cols = st.columns(2)
     with cols[0]:
-        st.metric("Предсказанная цена (P50)", f"{price:,.0f} руб".replace(",", " "))
+        st.metric("Предсказанная цена", f"{price:,.0f} руб".replace(",", " "))
     with cols[1]:
-        st.metric("Нижняя граница (P10)", f"{p10:,.0f} руб".replace(",", " "))
-    with cols[2]:
-        st.metric("Верхняя граница (P90)", f"{p90:,.0f} руб".replace(",", " "))
-    with cols[3]:
         st.metric("Цена за м²", f"{price_per_sqm:,.0f} руб/м²".replace(",", " ") if price_per_sqm else "—")
 
-    if use_approx:
-        st.caption("P10/P90 рассчитаны приближённо (±15%). Точная вилка доступна при загрузке квантильных моделей на сервере.")
-
-    # График вилки цен
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=["P10", "P50", "P90"],
-        y=[p10, price, p90],
-        marker_color=["#90CAF9", "#1976D2", "#90CAF9"],
-        text=[f"{p10:,.0f}".replace(",", " "), f"{price:,.0f}".replace(",", " "), f"{p90:,.0f}".replace(",", " ")],
-        textposition="outside",
-    ))
-    fig.update_layout(
-        title="Вилка цен (квантили P10 — медиана P50 — P90)" + (" (приближённо)" if use_approx else ""),
-        yaxis_title="Цена (руб)",
-        height=320,
-        margin=dict(t=50, b=50),
-        showlegend=False,
+    # Исходные параметры сразу под ценой
+    st.subheader("Исходные параметры")
+    param_keys = [
+        ("total_area", "Площадь"),
+        ("rooms_count", "Комнат"),
+        ("floor_number", "Этаж"),
+        ("floors_count", "Этажей в доме"),
+        ("build_year", "Год постройки"),
+        ("district", "Район"),
+        ("metro", "Метро"),
+        ("travel_time", "Время до метро (мин)"),
+        ("repair_type", "Тип ремонта"),
+        ("material_type", "Тип дома"),
+    ]
+    disp = [_format_param(data.get(k), k) for k, _ in param_keys]
+    param_df = pd.DataFrame(
+        {"Параметр": [label for _, label in param_keys], "Значение": disp}
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(param_df, use_container_width=True, hide_index=True)
 
-    # Анализ по похожим объявлениям (как в оценомете: распределение цен, площадь–цена)
+    # Анализ по похожим объявлениям
     search_filters = {"limit": 100}
     if total_area and total_area > 0:
         search_filters["area_min"] = max(0, total_area - 15)
@@ -374,32 +373,6 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any]):
     else:
         if search_err:
             st.caption("Похожие объявления для графика недоступны: " + search_err)
-
-    # Пояснение про чувствительность к району
-    st.info(
-        "Если при смене района (например, ЦАО и за МКАД) разница в прогнозе мала — на сервере используется только базовая модель. "
-        "Квантильные модели и переобучение с акцентом на локацию дадут более чувствительный к району прогноз."
-    )
-
-    # Исходные параметры (сводка)
-    st.subheader("Исходные параметры")
-    param_keys = [
-        ("total_area", "Площадь"),
-        ("rooms_count", "Комнат"),
-        ("floor_number", "Этаж"),
-        ("floors_count", "Этажей в доме"),
-        ("build_year", "Год постройки"),
-        ("district", "Район"),
-        ("metro", "Метро"),
-        ("travel_time", "Время до метро (мин)"),
-        ("repair_type", "Тип ремонта"),
-        ("material_type", "Тип дома"),
-    ]
-    disp = [_format_param(data.get(k), k) for k, _ in param_keys]
-    param_df = pd.DataFrame(
-        {"Параметр": [label for _, label in param_keys], "Значение": disp}
-    )
-    st.dataframe(param_df, use_container_width=True, hide_index=True)
 
     # Карта
     st.subheader("Карта")
@@ -480,6 +453,18 @@ if mode == "Ввести параметры":
                     "travel_time": int(travel_time),
                     "coordinates": {"lat": lat, "lng": lng},
                 }
+                # Подставляем цену по рынку района: медиана руб/м² по похожим объявлениям — модель даёт адекватный прогноз
+                search_filters = {"limit": 80}
+                if total_area and total_area > 0:
+                    search_filters["area_min"] = max(0, total_area - 15)
+                    search_filters["area_max"] = total_area + 15
+                if rooms_count is not None:
+                    search_filters["rooms"] = rooms_count
+                if district and str(district).strip():
+                    search_filters["district"] = district.strip()
+                median_pps = _median_price_per_sqm_from_search(search_filters)
+                if median_pps is not None and total_area and total_area > 0:
+                    data["price"] = median_pps * total_area
                 st.session_state["prediction_data"] = data
                 st.session_state["prediction_result"] = call_predict_api(data)
 
