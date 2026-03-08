@@ -64,108 +64,90 @@ def close_browser():
 # Глобальный счетчик CAPTCHA для отслеживания подряд идущих CAPTCHA
 _captcha_count = {}  # {page: count}
 
-def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
+def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, use_proxy=True):
     global _captcha_count
-    logging.info(f'getResponse: Starting for page={page}, type={type}, respTry={respTry}, sort={sort}, rooms={rooms}')
+    logging.info(f'getResponse: Starting for page={page}, type={type}, respTry={respTry}, use_proxy={use_proxy}')
     
-    if respTry == 5:
-        check_and_unfreeze_proxies()
-        load_proxy_bans()  # Загружаем актуальные баны из файла
-        # Сбрасываем счетчик CAPTCHA для новой страницы
-        _captcha_count[page] = 0
-    
-    # Исключаем пустой прокси и временно забаненные прокси из доступных
-    available_proxies = {
-        k: v for k, v in proxyDict.items() 
-        if v <= time.time() and k != '' and not proxyTemporaryBan.get(k, False)
-    }
-    
-    # Логируем статистику доступных прокси (только при первом запросе страницы)
-    if respTry == 5:
-        total_proxies = len([p for p in proxyDict.keys() if p != ''])
-        banned_proxies = sum(1 for p in proxyDict.keys() if p != '' and proxyTemporaryBan.get(p, False))
-        time_blocked = sum(1 for k, v in proxyDict.items() if k != '' and v > time.time() and not proxyTemporaryBan.get(k, False))
-        available_count = len(available_proxies)
-        new_proxies_available = sum(1 for p in available_proxies.keys() if '4MfBTo:mgCBFh' in p)
-        logging.info(f'Proxy stats: total={total_proxies}, banned={banned_proxies}, time_blocked={time_blocked}, available={available_count}, new_proxies_available={new_proxies_available}')
-    
-    # Проверяем, не заблокированы ли все прокси CAPTCHA (блокировка > 10 минут)
-    # Если да, сразу возвращаем CAPTCHA, чтобы не тратить время
-    if len(available_proxies) < 1:
-        # Проверяем минимальное время блокировки
-        non_empty_proxies = {k: v for k, v in proxyDict.items() if k != ''}
-        if non_empty_proxies:
-            mintime = min(non_empty_proxies.values())
-            current_time = time.time()
-            if mintime > current_time:
-                block_duration = mintime - current_time
-                # Если все прокси заблокированы более чем на 5 минут, вероятно это CAPTCHA
-                # Пропускаем страницу сразу, чтобы не тратить время (уменьшено с 10 до 5 минут)
-                if block_duration > (5 * 60) and respTry <= 2:
-                    logging.warning(f'All proxies blocked for {block_duration/60:.1f} minutes (likely CAPTCHA), skipping page {page}')
-                    return 'CAPTCHA'
-        
-        count = min(len(proxyDict) - 1, 1)
-        mintime = sorted(proxyDict.values())[count]
-        if (mintime > (timenow := time.time())):
-            misstime = min(mintime - timenow, 60)  # Максимум 60 секунд
-            logging.info(f'No available proxies, waiting {misstime:.2f} seconds')
-            time.sleep(misstime)
-            # Исключаем пустой прокси при пересчете
-            available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
-    
-    if available_proxies:
-        # Улучшенная ротация: выбираем прокси с наименьшим количеством ошибок подключения
-        # Это помогает избегать неработающих прокси
-        available_proxies_list = list(available_proxies.keys())
-        # Сортируем по количеству ошибок подключения (меньше ошибок = лучше)
-        available_proxies_list.sort(key=lambda p: proxyConnectionErrors.get(p, 0))
-        # Выбираем из прокси с наименьшим количеством ошибок (первые 50% или минимум 1)
-        best_proxies = available_proxies_list[:max(1, len(available_proxies_list) // 2)]
-        proxy = random.choice(best_proxies)
-        
-        # Логируем выбор прокси (только при первом запросе страницы)
+    proxy = None
+    if use_proxy:
         if respTry == 5:
-            new_proxies = [p for p in best_proxies if '4MfBTo:mgCBFh' in p]
-            errors_list = [proxyConnectionErrors.get(p, 0) for p in best_proxies[:5]]
-            if new_proxies:
-                logging.info(f'Selected proxy from {len(best_proxies)} best proxies (errors: {errors_list}), new proxies in pool: {len(new_proxies)}')
-            else:
-                # Проверяем, есть ли новые прокси в доступных, но не в лучших
-                new_in_available = [p for p in available_proxies.keys() if '4MfBTo:mgCBFh' in p]
-                if new_in_available:
-                    new_errors = [proxyConnectionErrors.get(p, 0) for p in new_in_available]
-                    logging.warning(f'Selected proxy from {len(best_proxies)} best proxies (errors: {errors_list}), new proxies NOT in best pool (have {len(new_in_available)} new with errors: {new_errors})')
+            check_and_unfreeze_proxies()
+            load_proxy_bans()  # Загружаем актуальные баны из файла
+            # Сбрасываем счетчик CAPTCHA для новой страницы
+            _captcha_count[page] = 0
+
+        # Исключаем пустой прокси и временно забаненные прокси из доступных
+        available_proxies = {
+            k: v for k, v in proxyDict.items()
+            if v <= time.time() and k != '' and not proxyTemporaryBan.get(k, False)
+        }
+
+        # Логируем статистику доступных прокси (только при первом запросе страницы)
+        if respTry == 5:
+            total_proxies = len([p for p in proxyDict.keys() if p != ''])
+            banned_proxies = sum(1 for p in proxyDict.keys() if p != '' and proxyTemporaryBan.get(p, False))
+            time_blocked = sum(1 for k, v in proxyDict.items() if k != '' and v > time.time() and not proxyTemporaryBan.get(k, False))
+            available_count = len(available_proxies)
+            new_proxies_available = sum(1 for p in available_proxies.keys() if '4MfBTo:mgCBFh' in p)
+            logging.info(f'Proxy stats: total={total_proxies}, banned={banned_proxies}, time_blocked={time_blocked}, available={available_count}, new_proxies_available={new_proxies_available}')
+
+        # Проверяем, не заблокированы ли все прокси CAPTCHA (блокировка > 10 минут)
+        if len(available_proxies) < 1:
+            non_empty_proxies = {k: v for k, v in proxyDict.items() if k != ''}
+            if non_empty_proxies:
+                mintime = min(non_empty_proxies.values())
+                current_time = time.time()
+                if mintime > current_time:
+                    block_duration = mintime - current_time
+                    if block_duration > (5 * 60) and respTry <= 2:
+                        logging.warning(f'All proxies blocked for {block_duration/60:.1f} minutes (likely CAPTCHA), skipping page {page}')
+                        return 'CAPTCHA'
+
+                count = min(len(proxyDict) - 1, 1)
+                mintime = sorted(proxyDict.values())[count]
+                if (mintime > (timenow := time.time())):
+                    misstime = min(mintime - timenow, 60)
+                    logging.info(f'No available proxies, waiting {misstime:.2f} seconds')
+                    time.sleep(misstime)
+                    available_proxies = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
+
+        if available_proxies:
+            available_proxies_list = list(available_proxies.keys())
+            available_proxies_list.sort(key=lambda p: proxyConnectionErrors.get(p, 0))
+            best_proxies = available_proxies_list[:max(1, len(available_proxies_list) // 2)]
+            proxy = random.choice(best_proxies)
+            if respTry == 5:
+                new_proxies = [p for p in best_proxies if '4MfBTo:mgCBFh' in p]
+                errors_list = [proxyConnectionErrors.get(p, 0) for p in best_proxies[:5]]
+                if new_proxies:
+                    logging.info(f'Selected proxy from {len(best_proxies)} best proxies (errors: {errors_list}), new proxies in pool: {len(new_proxies)}')
                 else:
-                    logging.info(f'Selected proxy from {len(best_proxies)} best proxies (errors: {errors_list}), no new proxies available')
-    else:
-        # Если все прокси заблокированы после ожидания
-        # НЕ используем пустой прокси - он всегда дает 403, это бессмысленно
-        non_empty_proxies = {k: v for k, v in proxyDict.items() if k != ''}
-        if non_empty_proxies:
-            # Выбираем прокси с наименьшим временем блокировки (освободится раньше всех)
-            earliest_proxy = min(non_empty_proxies.items(), key=lambda x: x[1])
-            unlock_time = earliest_proxy[1] - time.time()
-            # НЕ используем прокси, который заблокирован более чем на 1 минуту
-            # Если все прокси заблокированы более чем на 1 минуту, лучше пропустить страницу
-            if unlock_time <= 60:  # Если освободится в течение 1 минуты
-                proxy = earliest_proxy[0]
-                logging.warning(f'All proxies blocked, using earliest available: {proxy[:30]}... (unlocks in {unlock_time:.0f}s)')
-            else:
-                # Если все прокси заблокированы более чем на 1 минуту, возвращаем CAPTCHA
-                if respTry <= 2:
-                    logging.warning(f'All proxies blocked for >1 minute (unlock in {unlock_time:.0f}s), skipping page {page}')
-                    return 'CAPTCHA'
-                # Если есть попытки, ждем освобождения
-                wait_time = min(unlock_time, 60)
-                logging.warning(f'All proxies blocked for >1 minute, waiting {wait_time:.0f}s before retry')
-                time.sleep(wait_time)
-                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+                    new_in_available = [p for p in available_proxies.keys() if '4MfBTo:mgCBFh' in p]
+                    if new_in_available:
+                        new_errors = [proxyConnectionErrors.get(p, 0) for p in new_in_available]
+                        logging.warning(f'Selected proxy from {len(best_proxies)} best proxies (errors: {errors_list}), new proxies NOT in best pool (have {len(new_in_available)} new with errors: {new_errors})')
+                    else:
+                        logging.info(f'Selected proxy from {len(best_proxies)} best proxies (errors: {errors_list}), no new proxies available')
         else:
-            # Нет прокси в словаре вообще - это ошибка конфигурации
-            logging.error('No proxies configured in proxyDict')
-            return None
-    
+            non_empty_proxies = {k: v for k, v in proxyDict.items() if k != ''}
+            if non_empty_proxies:
+                earliest_proxy = min(non_empty_proxies.items(), key=lambda x: x[1])
+                unlock_time = earliest_proxy[1] - time.time()
+                if unlock_time <= 60:
+                    proxy = earliest_proxy[0]
+                    logging.warning(f'All proxies blocked, using earliest available: {proxy[:30]}... (unlocks in {unlock_time:.0f}s)')
+                else:
+                    if respTry <= 2:
+                        logging.warning(f'All proxies blocked for >1 minute (unlock in {unlock_time:.0f}s), skipping page {page}')
+                        return 'CAPTCHA'
+                    wait_time = min(unlock_time, 60)
+                    logging.warning(f'All proxies blocked for >1 minute, waiting {wait_time:.0f}s before retry')
+                    time.sleep(wait_time)
+                    return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
+            else:
+                logging.error('No proxies configured in proxyDict')
+                return None
+
     # Формируем URL и параметры запроса
     if type == 1:  # Страница объявления
         url = f'{URL}/rent/flat/{page}/'
@@ -249,7 +231,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 else:
                     proxyDict[proxy] = time.time() + (1 * 60)
                 
-                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
             # Проверяем на CAPTCHA
             if content and ('captcha' in content.lower() or 'капча' in content.lower() or 'recaptcha' in content.lower()):
@@ -285,7 +267,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 if not respTry:
                     return 'CAPTCHA'
-                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
             # Успешный запрос
             proxyDict[proxy] = time.time() + 0
@@ -336,7 +318,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                     proxyDict[proxy] = time.time() + (1 * 60)
                 proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
             
-            return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+            return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
     
     # Делаем запрос через Playwright (для обычных прокси)
     try:
@@ -490,7 +472,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 else:
                     proxyDict[proxy] = time.time() + (1 * 60)  # 1 минута блокировки
                 
-                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
             # Успешный запрос - проверяем на CAPTCHA ДО закрытия страницы
             current_url = page_obj.url
@@ -638,7 +620,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 
                 if not respTry:
                     return 'CAPTCHA'
-                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+                return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
             # Обновляем время блокировки прокси после успешного запроса
             # НЕ блокируем прокси после успешного запроса - пусть ротируется естественно
@@ -679,7 +661,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 return None
             
             proxyDict[proxy] = time.time() + (1 * 60)
-            return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+            return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
     except Exception as e:
         error_msg = str(e)
@@ -727,7 +709,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True):
                 proxyDict[proxy] = time.time() + (1 * 60)
             proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
         
-        return getResponse(page, type, respTry - 1, sort, rooms, dbinsert)
+        return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
 def prePage(data, type=0):
     if type:
         # Для страницы объявления ищем "offerData"
@@ -949,7 +931,7 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
             logging.info(f"Apart page {page} skipped after {retry_count} failed attempts")
             continue
         
-        response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2)  # Уменьшено до 2 попыток для быстрей обработки
+        response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2, use_proxy=dbinsert)  # Без прокси для API «по ссылке»
         
         # Обработка CAPTCHA - пропускаем объявление
         if response == 'CAPTCHA':
