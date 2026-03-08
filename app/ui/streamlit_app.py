@@ -472,17 +472,30 @@ else:
     st.sidebar.header("По ссылке на объявление")
     url_input = st.sidebar.text_input("URL объявления Циан", placeholder="https://www.cian.ru/rent/flat/...")
     if st.sidebar.button("Оценить по ссылке", type="primary") and url_input:
+        url_input = url_input.strip()
         match = re.search(r"flat/(\d{4,})", url_input)
         if not match:
             st.sidebar.error("Неверный формат ссылки. Вставьте ссылку на объявление аренды квартиры с cian.ru")
         else:
+            flat_id = match.group(1)
+            url_for_api = f"https://www.cian.ru/rent/flat/{flat_id}/"
             with st.spinner("Загрузка данных объявления..."):
                 try:
-                    resp = requests.get(f"{API_BASE_URL}/getparams", params={"url": url_input}, timeout=30)
+                    resp = requests.get(f"{API_BASE_URL}/getparams", params={"url": url_for_api}, timeout=30)
                     resp.raise_for_status()
                     flat = resp.json()
                 except requests.exceptions.HTTPError as e:
-                    st.error(f"Не удалось загрузить объявление: {e.response.status_code}. Проверьте ссылку и доступность объявления.")
+                    msg = None
+                    if e.response is not None:
+                        try:
+                            body = e.response.json()
+                            if isinstance(body, dict) and body.get("detail"):
+                                msg = body["detail"]
+                        except Exception:
+                            pass
+                    if not msg:
+                        msg = f"Не удалось загрузить объявление: {e.response.status_code}. Проверьте ссылку и доступность объявления."
+                    st.error(msg)
                     flat = None
                 except Exception as e:
                     st.error(f"Ошибка при загрузке: {e}")

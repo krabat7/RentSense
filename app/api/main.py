@@ -31,20 +31,34 @@ except Exception as e:
     baseline_model = None
 
 
+def _extract_flat_id(url: str) -> str | None:
+    """Извлекает id объявления из URL (поддерживает длинные ссылки с query-параметрами)."""
+    match = re.search(r'flat/(\d{4,})', url)
+    return match.group(1) if match else None
+
+
 @router.get('/getparams', response_model=Params)
 async def getparams(url: str):
     """Извлечение параметров объявления из URL Циана."""
-    match = re.search(r'flat/(\d{4,})', url)
-    if not match or not (id := match.group(1)):
+    flat_id = _extract_flat_id(url)
+    if not flat_id:
         raise HTTPException(status_code=400, detail='Неверный формат объявления')
-    data = await to_thread(apartPage, [id], dbinsert=False)
-    if not data:
-        raise HTTPException(status_code=400, detail='Неверный формат объявления')
-    if not isinstance(data, dict):
-        return
-    data = Params(**data)
-    response = await to_thread(preparams, data)
-    return response
+    data = await to_thread(apartPage, [flat_id], dbinsert=False)
+    if data is None or not isinstance(data, dict):
+        raise HTTPException(
+            status_code=400,
+            detail='Объявление недоступно или снято с публикации. Проверьте ссылку.',
+        )
+    try:
+        data = Params(**data)
+        response = await to_thread(preparams, data)
+        return response
+    except Exception as e:
+        logger.exception("getparams failed for flat_id=%s: %s", flat_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail='Не удалось разобрать данные объявления. Проверьте ссылку и доступность.',
+        )
 
 
 def _ensure_cat_string(ser: pd.Series) -> np.ndarray:
