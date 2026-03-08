@@ -1,6 +1,7 @@
 import re
 import uvicorn
 import pandas as pd
+import numpy as np
 from fastapi import APIRouter, FastAPI, HTTPException
 from app.parser.main import apartPage
 from .models import Params, PredictReq, PredictResponse
@@ -46,9 +47,20 @@ async def getparams(url: str):
     return response
 
 
+def _ensure_cat_string(ser: pd.Series) -> np.ndarray:
+    """Категориальные признаки CatBoost: только str или int. Float/NaN → строка 'unknown'."""
+    def to_cat(x):
+        if pd.isna(x) or isinstance(x, (float, np.floating)):
+            return "unknown"
+        if isinstance(x, (str, int)):
+            return x
+        return str(x)
+    return ser.apply(to_cat).values
+
+
 def _align_df_to_model(df: pd.DataFrame, model) -> pd.DataFrame:
     """Приводит DataFrame к признакам модели: порядок колонок, недостающие — 0.
-    Числовые признаки модели не должны содержать строки (например 'unknown') — приводим к float, иначе CatBoost падает."""
+    Числовые: строки/unknown → float 0. Категориальные: float/NaN → строка 'unknown'."""
     try:
         names = getattr(model, 'feature_names_', None) or getattr(model, 'feature_names', lambda: None)()
         if not names:
@@ -69,12 +81,11 @@ def _align_df_to_model(df: pd.DataFrame, model) -> pd.DataFrame:
         if name in df.columns:
             ser = df[name]
             if name in cat_names:
-                out[name] = ser.values
+                out[name] = _ensure_cat_string(ser)
             else:
-                # Модель ожидает числовой признак — строки вроде 'unknown' приводят к float, пропуски → 0
                 out[name] = pd.to_numeric(ser, errors='coerce').fillna(0).values
         else:
-            out[name] = 0
+            out[name] = "unknown" if name in cat_names else 0
     return out
 
 
