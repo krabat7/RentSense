@@ -14,6 +14,7 @@ import pandas as pd
 import folium
 from streamlit_folium import folium_static
 import plotly.graph_objects as go
+import plotly.express as px
 from typing import Dict, Any, Optional, List, Tuple
 
 # Конфигурация: в Docker задать API_BASE_URL=http://backend:8000/api
@@ -252,6 +253,11 @@ def _format_param(value: Any, key: str) -> str:
     return str(value)
 
 
+def _approx_bounds(price: float, margin: float = 0.15) -> Tuple[float, float]:
+    """Приближённые границы при отсутствии квантильных моделей."""
+    return (max(0, price * (1 - margin)), price * (1 + margin))
+
+
 def render_result(result: Dict[str, Any], data: Dict[str, Any]):
     """Общий блок отображения результата предсказания: метрики, графики, параметры, карта."""
     price = result.get("price", 0) or 0
@@ -260,35 +266,120 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any]):
     total_area = data.get("total_area")
     price_per_sqm = (price / total_area) if total_area and total_area > 0 else None
 
+    # Если квантильные модели не загружены — показываем приближённый диапазон
+    use_approx = p10 is None or p90 is None
+    if use_approx:
+        p10, p90 = _approx_bounds(price)
+
     # Метрики в одну строку
     cols = st.columns(4)
     with cols[0]:
         st.metric("Предсказанная цена (P50)", f"{price:,.0f} руб".replace(",", " "))
     with cols[1]:
-        st.metric("Нижняя граница (P10)", f"{(p10 or 0):,.0f} руб".replace(",", " ") if p10 is not None else "—")
+        st.metric("Нижняя граница (P10)", f"{p10:,.0f} руб".replace(",", " "))
     with cols[2]:
-        st.metric("Верхняя граница (P90)", f"{(p90 or 0):,.0f} руб".replace(",", " ") if p90 is not None else "—")
+        st.metric("Верхняя граница (P90)", f"{p90:,.0f} руб".replace(",", " "))
     with cols[3]:
         st.metric("Цена за м²", f"{price_per_sqm:,.0f} руб/м²".replace(",", " ") if price_per_sqm else "—")
 
+    if use_approx:
+        st.caption("P10/P90 рассчитаны приближённо (±15%). Точная вилка доступна при загрузке квантильных моделей на сервере.")
+
     # График вилки цен
-    if p10 is not None and p90 is not None:
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=["P10", "P50", "P90"],
-            y=[p10, price, p90],
-            marker_color=["#90CAF9", "#1976D2", "#90CAF9"],
-            text=[f"{p10:,.0f}".replace(",", " "), f"{price:,.0f}".replace(",", " "), f"{p90:,.0f}".replace(",", " ")],
-            textposition="outside",
-        ))
-        fig.update_layout(
-            title="Вилка цен (квантили P10 — медиана P50 — P90)",
-            yaxis_title="Цена (руб)",
-            height=320,
-            margin=dict(t=50, b=50),
-            showlegend=False,
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=["P10", "P50", "P90"],
+        y=[p10, price, p90],
+        marker_color=["#90CAF9", "#1976D2", "#90CAF9"],
+        text=[f"{p10:,.0f}".replace(",", " "), f"{price:,.0f}".replace(",", " "), f"{p90:,.0f}".replace(",", " ")],
+        textposition="outside",
+    ))
+    fig.update_layout(
+        title="Вилка цен (квантили P10 — медиана P50 — P90)" + (" (приближённо)" if use_approx else ""),
+        yaxis_title="Цена (руб)",
+        height=320,
+        margin=dict(t=50, b=50),
+        showlegend=False,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Анализ по похожим объявлениям (как в оценомете: распределение цен, площадь–цена)
+    search_filters = {"limit": 100}
+    if total_area and total_area > 0:
+        search_filters["area_min"] = max(0, total_area - 15)
+        search_filters["area_max"] = total_area + 15
+    if data.get("rooms_count") is not None:
+        search_filters["rooms"] = data.get("rooms_count")
+    if data.get("district") and str(data.get("district")).strip():
+        search_filters["district"] = data.get("district")
+    search_resp, search_err = call_search_api(search_filters)
+    offers = search_resp.get("results", []) if search_resp else []
+
+    if offers:
+        st.subheader("Анализ по похожим объявлениям")
+        df_offers = pd.DataFrame(offers)
+        if "price" in df_offers.columns:
+            # Распределение цен + вертикальная линия прогноза
+            fig_hist = px.histogram(
+                df_offers, x="price", nbins=30,
+                title="Распределение цен похожих объявлений",
+                labels={"price": "Стоимость (руб)", "count": "Количество"},
+            )
+            fig_hist.add_vline(
+                x=price, line_dash="dash", line_color="red",
+                annotation_text="Прогноз",
+            )
+            fig_hist.update_layout(height=320, xaxis_title="Стоимость (руб)", yaxis_title="Количество")
+            st.plotly_chart(fig_hist, use_container_width=True)
+
+        if "total_area" in df_offers.columns and "price" in df_offers.columns:
+            # Площадь vs цена: точки из БД + наша квартира
+            fig_scatter = go.Figure()
+            fig_scatter.add_trace(
+                go.Scatter(
+                    x=df_offers["total_area"], y=df_offers["price"],
+                    mode="markers", marker=dict(size=6, color="blue"), name="Похожие объявления",
+                )
+            )
+            if total_area:
+                fig_scatter.add_trace(
+                    go.Scatter(
+                        x=[total_area], y=[price],
+                        mode="markers", marker=dict(size=14, color="red", symbol="diamond"),
+                        name="Ваш прогноз",
+                    )
+                )
+            fig_scatter.update_layout(
+                title="Взаимосвязь площади и стоимости",
+                xaxis_title="Общая площадь (м²)", yaxis_title="Стоимость (руб)",
+                height=320, showlegend=True,
+            )
+            st.plotly_chart(fig_scatter, use_container_width=True)
+
+        if "rooms_count" in df_offers.columns and "price" in df_offers.columns:
+            fig_box = px.box(
+                df_offers, x="rooms_count", y="price",
+                title="Распределение цен по количеству комнат",
+                labels={"rooms_count": "Комнат", "price": "Стоимость (руб)"},
+            )
+            if total_area and data.get("rooms_count") is not None:
+                fig_box.add_trace(
+                    go.Scatter(
+                        x=[data["rooms_count"]], y=[price],
+                        mode="markers", marker=dict(color="red", size=12), name="Ваш прогноз",
+                    )
+                )
+            fig_box.update_layout(height=320)
+            st.plotly_chart(fig_box, use_container_width=True)
+    else:
+        if search_err:
+            st.caption("Похожие объявления для графика недоступны: " + search_err)
+
+    # Пояснение про чувствительность к району
+    st.info(
+        "Если при смене района (например, ЦАО и за МКАД) разница в прогнозе мала — на сервере используется только базовая модель. "
+        "Квантильные модели и переобучение с акцентом на локацию дадут более чувствительный к району прогноз."
+    )
 
     # Исходные параметры (сводка)
     st.subheader("Исходные параметры")
