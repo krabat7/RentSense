@@ -81,6 +81,47 @@ services:
       mysql:
         condition: service_started
 
+  streamlit:
+    build: .
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Moscow
+      PYTHONPATH: /app
+      API_BASE_URL: http://backend:8000/api
+    volumes:
+      - ./:/app
+      - ./logs:/app/logs
+      - ./data:/app/data
+    ports:
+      - "8501:8501"
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: streamlit run app/ui/streamlit_app.py --server.port=8501 --server.address=0.0.0.0
+
+  telegram_bot:
+    build: .
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Moscow
+      PYTHONPATH: /app
+      DB_TYPE: mysql+pymysql
+      DB_LOGIN: root
+      DB_PASS: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      DB_IP: mysql
+      DB_PORT: 3306
+      DB_NAME: rentsense
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALERT_LIMIT: 5
+      TELEGRAM_SCAN_INTERVAL_HOURS: 12
+    depends_on:
+      mysql:
+        condition: service_started
+    volumes:
+      - ./:/app
+      - ./logs:/app/logs
+    command: python -m app.bot.telegram_bot
+
 volumes:
   mysql_data:
     driver: local

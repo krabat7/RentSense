@@ -15,7 +15,8 @@ from sqlalchemy import create_engine
 from dotenv import dotenv_values
 
 sys.path.append(str(Path(__file__).parent))
-from features.geo_features import add_geo_features_v0
+from features import add_features_v2
+from features.interaction_features import add_interaction_features
 
 
 def load_data_from_db(engine):
@@ -246,6 +247,7 @@ def feature_engineering(df):
     
     price_col = 'price_actual' if 'price_actual' in df.columns else 'price'
     
+    # Базовые фичи (price_per_sqm, house_age) - нужны для других фичей
     if 'total_area' in df.columns and price_col in df.columns:
         df['total_area'] = pd.to_numeric(df['total_area'], errors='coerce')
         df['price_per_sqm'] = df[price_col] / df['total_area']
@@ -257,9 +259,12 @@ def feature_engineering(df):
         df['house_age'] = df['house_age'].clip(lower=0, upper=300)
         print(f"Добавлено: house_age")
     
-    df = add_geo_features_v0(df)
-    if 'distance_from_center' in df.columns:
-        print(f"Добавлено: distance_from_center, distance_to_metro")
+    # Применяем все фичи v2 (гео, travel, seasonal, building, clustering)
+    df = add_features_v2(df, use_clustering=True, n_clusters=5)
+    
+    # Интеракции применяются после создания price_per_sqm
+    df = add_interaction_features(df)
+    print("  Интеракции")
     
     return df
 

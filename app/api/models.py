@@ -118,6 +118,8 @@ class PredictReq(BaseModel):
 
 class PredictResponse(BaseModel):
     price: float
+    price_p10: float | None = None
+    price_p90: float | None = None
 
 
 class MessageResponse(BaseModel):

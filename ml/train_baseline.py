@@ -122,9 +122,17 @@ def prepare_features(df, use_correlation_filter=True, min_correlation=0.01):
     return X, y, categorical_cols, numeric_cols, feature_cols
 
 
-def train_catboost(X_train, y_train, X_test, y_test, categorical_cols, run_name="catboost_baseline"):
+def train_catboost(X_train, y_train, X_test, y_test, categorical_cols, 
+                   use_log_price=False, run_name="catboost_baseline"):
     """Обучение CatBoost модели."""
     print("\nОбучение CatBoost...")
+    if use_log_price:
+        print("  Используется логарифмирование цены")
+        y_train_log = np.log1p(y_train)
+        y_test_log = np.log1p(y_test)
+    else:
+        y_train_log = y_train
+        y_test_log = y_test
     
     model = CatBoostRegressor(
         iterations=500,
@@ -138,14 +146,22 @@ def train_catboost(X_train, y_train, X_test, y_test, categorical_cols, run_name=
     )
     
     model.fit(
-        X_train, y_train,
-        eval_set=(X_test, y_test),
+        X_train, y_train_log,
+        eval_set=(X_test, y_test_log),
         use_best_model=True,
         verbose=100
     )
     
-    y_pred_train = model.predict(X_train)
-    y_pred_test = model.predict(X_test)
+    y_pred_train_log = model.predict(X_train)
+    y_pred_test_log = model.predict(X_test)
+    
+    # Обратное преобразование, если использовалось логарифмирование
+    if use_log_price:
+        y_pred_train = np.expm1(y_pred_train_log)
+        y_pred_test = np.expm1(y_pred_test_log)
+    else:
+        y_pred_train = y_pred_train_log
+        y_pred_test = y_pred_test_log
     
     metrics_train = {
         'train_mae': mean_absolute_error(y_train, y_pred_train),
@@ -248,11 +264,13 @@ def train_lightgbm(X_train, y_train, X_test, y_test, categorical_cols, run_name=
     return model, metrics_train, metrics_test, quantiles_test
 
 
-def log_model_to_mlflow(model, model_name, X_train, y_train, metrics_train, metrics_test, quantiles_test):
+def log_model_to_mlflow(model, model_name, X_train, y_train, metrics_train, metrics_test, quantiles_test, use_log_price=False):
     """Логирование модели в MLflow."""
     with mlflow.start_run(run_name=f"{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
         mlflow.log_param("model_name", model_name)
         mlflow.log_param("train_size", len(X_train))
+        mlflow.log_param("use_log_price", use_log_price)
+        mlflow.set_tag("model_version", "v2" if use_log_price else "baseline")
         
         for key, value in metrics_train.items():
             mlflow.log_metric(key, value)
@@ -294,8 +312,14 @@ def save_model(model, model_name, output_dir):
     return model_path
 
 
-def train_baseline_models(data_dir=None, models_dir=None):
-    """Основная функция обучения моделей."""
+def train_baseline_models(data_dir=None, models_dir=None, use_log_price=False):
+    """Основная функция обучения моделей.
+    
+    Args:
+        data_dir: Директория с данными (train.csv, test.csv)
+        models_dir: Директория для сохранения моделей
+        use_log_price: Использовать ли логарифмирование цены (np.log1p)
+    """
     if data_dir is None:
         data_dir = Path(__file__).parent.parent / 'data' / 'processed'
     data_dir = Path(data_dir)
@@ -325,26 +349,30 @@ def train_baseline_models(data_dir=None, models_dir=None):
     print(f"  Медиана: {y_train.median():.2f}")
     print(f"  Среднее: {y_train.mean():.2f}")
     print(f"  Мин/Макс: {y_train.min():.2f} / {y_train.max():.2f}")
+    if use_log_price:
+        print(f"  Используется логарифмирование цены")
     
     init_mlflow()
     
     print("\n" + "="*60)
     cat_model, cat_metrics_train, cat_metrics_test, cat_quantiles = train_catboost(
-        X_train, y_train, X_test, y_test, cat_cols_train, run_name="catboost_baseline"
+        X_train, y_train, X_test, y_test, cat_cols_train, 
+        use_log_price=use_log_price, run_name="catboost_baseline"
     )
     log_model_to_mlflow(
         cat_model, "catboost", X_train, y_train,
-        cat_metrics_train, cat_metrics_test, cat_quantiles
+        cat_metrics_train, cat_metrics_test, cat_quantiles, use_log_price=use_log_price
     )
     save_model(cat_model, "catboost", models_dir)
     
     print("\n" + "="*60)
     lgb_model, lgb_metrics_train, lgb_metrics_test, lgb_quantiles = train_lightgbm(
-        X_train, y_train, X_test, y_test, cat_cols_train, run_name="lightgbm_baseline"
+        X_train, y_train, X_test, y_test, cat_cols_train, 
+        use_log_price=use_log_price, run_name="lightgbm_baseline"
     )
     log_model_to_mlflow(
         lgb_model, "lightgbm", X_train, y_train,
-        lgb_metrics_train, lgb_metrics_test, lgb_quantiles
+        lgb_metrics_train, lgb_metrics_test, lgb_quantiles, use_log_price=use_log_price
     )
     save_model(lgb_model, "lightgbm", models_dir)
     
