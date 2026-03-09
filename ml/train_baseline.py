@@ -69,8 +69,20 @@ def analyze_correlations(df, target_col='price_actual', min_corr=0.01):
     return sorted_corr
 
 
-def prepare_features(df, use_correlation_filter=True, min_correlation=0.01):
-    """Подготовка признаков для обучения."""
+def prepare_features(
+    df,
+    use_correlation_filter=True,
+    min_correlation=0.01,
+    max_numeric_features=None,
+):
+    """Подготовка признаков для обучения.
+
+    Отбор признаков:
+    - use_correlation_filter: отсекать признаки с |corr(признак, цена)| < min_correlation
+      (сейчас min_correlation=0.01 — очень мягкий порог, отсекается только явный шум, поэтому ~99 признаков).
+    - max_numeric_features: если задано (например 40), оставить только топ-N числовых признаков
+      по убыванию |корреляции с ценой|; категориальные сохраняются все. Уменьшает число признаков.
+    """
     target_col = 'price_actual' if 'price_actual' in df.columns else 'price'
     
     exclude_cols = [
@@ -87,7 +99,15 @@ def prepare_features(df, use_correlation_filter=True, min_correlation=0.01):
         if correlations:
             low_corr_cols = [col for col, corr in correlations if abs(corr) < min_correlation]
             feature_cols = [col for col in feature_cols if col not in low_corr_cols]
-            print(f"\nПосле фильтрации по корреляции: {len(feature_cols)} признаков")
+            print(f"\nПосле фильтрации по корреляции (<{min_correlation}): {len(feature_cols)} признаков")
+            # Опционально: оставить только топ-N числовых по корреляции (категориальные — все)
+            if max_numeric_features is not None:
+                corr_dict = dict(correlations)
+                numeric_ordered = [c for c, _ in correlations if c in feature_cols]
+                categorical_in_features = [c for c in feature_cols if c not in corr_dict]
+                top_numeric = numeric_ordered[:max_numeric_features]
+                feature_cols = top_numeric + categorical_in_features
+                print(f"Оставлен топ-{max_numeric_features} числовых по корреляции + {len(categorical_in_features)} категориальных → всего {len(feature_cols)} признаков")
     
     X = df[feature_cols].copy()
     y = df[target_col].copy()
@@ -312,13 +332,20 @@ def save_model(model, model_name, output_dir):
     return model_path
 
 
-def train_baseline_models(data_dir=None, models_dir=None, use_log_price=False):
+def train_baseline_models(
+    data_dir=None,
+    models_dir=None,
+    use_log_price=False,
+    max_numeric_features=None,
+):
     """Основная функция обучения моделей.
     
     Args:
         data_dir: Директория с данными (train.csv, test.csv)
         models_dir: Директория для сохранения моделей
         use_log_price: Использовать ли логарифмирование цены (np.log1p)
+        max_numeric_features: Если задано (например 40), оставить только топ-N числовых
+            признаков по корреляции с ценой; уменьшает число признаков для обучения.
     """
     if data_dir is None:
         data_dir = Path(__file__).parent.parent / 'data' / 'processed'
@@ -337,7 +364,10 @@ def train_baseline_models(data_dir=None, models_dir=None, use_log_price=False):
     
     print("\nПодготовка признаков...")
     X_train, y_train, cat_cols_train, num_cols_train, feature_cols = prepare_features(
-        train_df, use_correlation_filter=True, min_correlation=0.01
+        train_df,
+        use_correlation_filter=True,
+        min_correlation=0.01,
+        max_numeric_features=max_numeric_features,
     )
     X_test, y_test, _, _, _ = prepare_features(
         test_df, use_correlation_filter=False

@@ -1,6 +1,7 @@
 .env
 logs/
 backups/
+presentation/
 *.backup*
 
 # Python cache files
