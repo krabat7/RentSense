@@ -506,53 +506,46 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             except:
                 pass
             
-            # Проверяем наличие контента объявлений (признак рабочей страницы)
+            # Для одной страницы объявления (type=1) — быстрый путь: не вызываем inner_text('body') и не считаем карточки
+            single_offer = (type == 1)
             has_content = False
-            try:
-                # Ищем элементы, которые должны быть на рабочей странице
-                content_selectors = [
-                    '[data-name="CardComponent"]',  # Карточки объявлений
-                    '.c6e8ba5398',  # Класс карточек
-                    'article',
-                    '[data-testid="card"]',
-                    '.catalog-serp',  # Каталог
-                ]
-                for selector in content_selectors:
-                    try:
-                        if page_obj.query_selector(selector):
-                            has_content = True
-                            break
-                    except:
-                        continue
-            except:
-                pass
-            
-            # Проверяем текст на странице (видимый текст, не весь HTML)
             visible_text = ""
             has_vpn_message = False
-            try:
-                visible_text = page_obj.inner_text('body').lower()
-                # Проверяем конкретные паттерны блокировки VPN, а не просто слово "vpn"
-                vpn_patterns = [
-                    'кажется, у вас включён vpn',
-                    'отключите его и обновите страницу',
-                    'waf_block',
-                    'cian_waf_block',
-                ]
-                has_vpn_message = any(pattern in visible_text for pattern in vpn_patterns)
-            except:
-                pass
-            
-            # Подсчитываем количество карточек ДО закрытия страницы
             cards_count = 0
-            if has_content:
+            if single_offer:
+                # type=1: страница одной квартиры, проверки списка не нужны
+                has_content = True
+            else:
                 try:
-                    cards = page_obj.query_selector_all('[data-name="CardComponent"], .c6e8ba5398, article')
-                    cards_count = len(cards)
+                    content_selectors = [
+                        '[data-name="CardComponent"]', '.c6e8ba5398', 'article',
+                        '[data-testid="card"]', '.catalog-serp',
+                    ]
+                    for selector in content_selectors:
+                        try:
+                            if page_obj.query_selector(selector):
+                                has_content = True
+                                break
+                        except:
+                            continue
                 except:
                     pass
-            
-            # Получаем контент для дальнейшей обработки
+                try:
+                    visible_text = page_obj.inner_text('body').lower()
+                    vpn_patterns = [
+                        'кажется, у вас включён vpn', 'отключите его и обновите страницу',
+                        'waf_block', 'cian_waf_block',
+                    ]
+                    has_vpn_message = any(p in visible_text for p in vpn_patterns)
+                except:
+                    pass
+                if has_content:
+                    try:
+                        cards = page_obj.query_selector_all('[data-name="CardComponent"], .c6e8ba5398, article')
+                        cards_count = len(cards)
+                    except:
+                        pass
+
             content = page_obj.content()
             
             # Безопасное закрытие
@@ -637,14 +630,16 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             if page in _captcha_count:
                 _captcha_count[page] = 0
             
-            # Более широкий диапазон задержек для имитации человеческого поведения (3-25 секунд)
-            # Иногда быстрее (3-8 сек), иногда медленнее (12-25 сек) - как реальный пользователь
-            if random.random() < 0.7:  # 70% случаев - быстрые запросы
-                delay = random.uniform(3, 12)
-            else:  # 30% случаев - более медленные запросы
-                delay = random.uniform(12, 28)
-            logging.info(f'getResponse: Success, content length={len(content)}, waiting {delay:.1f}s before next request')
-            time.sleep(delay)
+            if single_offer:
+                delay = 0
+            else:
+                if random.random() < 0.7:
+                    delay = random.uniform(3, 12)
+                else:
+                    delay = random.uniform(12, 28)
+            if delay > 0:
+                logging.info(f'getResponse: Success, content length={len(content)}, waiting {delay:.1f}s before next request')
+                time.sleep(delay)
             
             logging.info(f'getResponse: Success, content length={len(content)}')
             return content
