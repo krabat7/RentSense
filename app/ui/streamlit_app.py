@@ -269,20 +269,22 @@ def _median_price_per_sqm_from_search(filters: Dict[str, Any]) -> Optional[float
     return float(pd.Series(per_sqm).median())
 
 
-def render_result(result: Dict[str, Any], data: Dict[str, Any]):
+def render_result(result: Dict[str, Any], data: Dict[str, Any], from_link: bool = False):
     """Общий блок отображения результата предсказания: цена, параметры, графики по похожим, карта."""
     price = result.get("price", 0) or 0
     total_area = data.get("total_area")
     price_per_sqm = (price / total_area) if total_area and total_area > 0 else None
-    real_price = data.get("price")
-    if real_price is not None:
-        try:
-            real_price = float(real_price)
-        except (TypeError, ValueError):
-            real_price = None
+    real_price = None
+    if from_link:
+        raw = data.get("price")
+        if raw is not None:
+            try:
+                real_price = float(raw)
+            except (TypeError, ValueError):
+                pass
 
-    # В режиме «по ссылке»: реальная стоимость, выгодно/не выгодно, разница
-    if real_price is not None and real_price > 0:
+    # Только в режиме «по ссылке»: сравнение с заявленной ценой объявления
+    if from_link and real_price is not None and real_price > 0:
         diff_rub = price - real_price
         diff_pct = (diff_rub / real_price * 100) if real_price else 0
         is_good = diff_rub > 0
@@ -495,6 +497,7 @@ if mode == "Ввести параметры":
                     data["price"] = median_pps * total_area
                 st.session_state["prediction_data"] = data
                 st.session_state["prediction_result"] = call_predict_api(data)
+                st.session_state["prediction_from_link"] = False
 
 else:
     st.sidebar.header("По ссылке на объявление")
@@ -509,7 +512,7 @@ else:
             url_for_api = f"https://www.cian.ru/rent/flat/{flat_id}/"
             with st.spinner("Загрузка данных объявления..."):
                 try:
-                    resp = requests.get(f"{API_BASE_URL}/getparams", params={"url": url_for_api}, timeout=100)
+                    resp = requests.get(f"{API_BASE_URL}/getparams", params={"url": url_for_api}, timeout=150)
                     resp.raise_for_status()
                     flat = resp.json()
                 except requests.exceptions.HTTPError as e:
@@ -538,9 +541,14 @@ else:
                     if result:
                         st.session_state["prediction_data"] = predict_data
                         st.session_state["prediction_result"] = result
+                        st.session_state["prediction_from_link"] = True
 
 if "prediction_result" in st.session_state and st.session_state["prediction_result"]:
-    render_result(st.session_state["prediction_result"], st.session_state.get("prediction_data", {}))
+    render_result(
+        st.session_state["prediction_result"],
+        st.session_state.get("prediction_data", {}),
+        from_link=st.session_state.get("prediction_from_link", False),
+    )
 else:
     if mode == "Ввести параметры":
         st.info("Заполните параметры в боковой панели и нажмите «Предсказать цену».")
