@@ -60,6 +60,8 @@ DATABASE_URL = f'{DBTYPE}://{LOGIN}:{PASS}@{IP}:{PORT}/{DBNAME}?charset=utf8mb4'
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 
+MULTI_VALUE_KEYS = {"metro", "district", "rooms"}
+
 
 def init_bot_tables():
     """Создание таблиц для бота. При необходимости добавляет колонку no_offers_sent_at."""
@@ -163,7 +165,27 @@ def get_user_preferences(user_id: int) -> dict:
     if not user or not user.preferences:
         return {}
     try:
-        return json.loads(user.preferences)
+        prefs = json.loads(user.preferences)
+        if not isinstance(prefs, dict):
+            return {}
+        normalized = {}
+        for key, value in prefs.items():
+            if key in MULTI_VALUE_KEYS:
+                if value is None:
+                    continue
+                if isinstance(value, list):
+                    cleaned = [v for v in value if v is not None and str(v).strip() != ""]
+                    if cleaned:
+                        normalized[key] = cleaned
+                elif isinstance(value, str):
+                    parts = [x.strip() for x in value.split(",") if x.strip()]
+                    if parts:
+                        normalized[key] = parts
+                else:
+                    normalized[key] = [value]
+            else:
+                normalized[key] = value
+        return normalized
     except Exception:
         return {}
 
@@ -185,7 +207,23 @@ def update_user_preferences(user_id: int, updates: dict):
             if v is None or v == '':
                 current.pop(k, None)
             else:
-                current[k] = v
+                if k in MULTI_VALUE_KEYS:
+                    if isinstance(v, list):
+                        cleaned = [x for x in v if x is not None and str(x).strip() != ""]
+                        if cleaned:
+                            current[k] = cleaned
+                        else:
+                            current.pop(k, None)
+                    elif isinstance(v, str):
+                        parts = [x.strip() for x in v.split(",") if x.strip()]
+                        if parts:
+                            current[k] = parts
+                        else:
+                            current.pop(k, None)
+                    else:
+                        current[k] = [v]
+                else:
+                    current[k] = v
         user.preferences = json.dumps(current, ensure_ascii=False)
         session.commit()
     finally:
@@ -235,3 +273,19 @@ def should_send_no_offers_message(user: BotUser) -> bool:
     if not user.no_offers_sent_at:
         return True
     return user.no_offers_sent_at.date() < datetime.now().date()
+
+
+def get_available_metro_stations(limit: int = 500):
+    """Возвращает список станций метро для кнопочного выбора фильтров."""
+    query = text(
+        """
+        SELECT DISTINCT metro
+        FROM addresses
+        WHERE metro IS NOT NULL AND TRIM(metro) != ''
+        ORDER BY metro
+        LIMIT :limit
+        """
+    )
+    with engine.connect() as conn:
+        rows = conn.execute(query, {"limit": limit}).fetchall()
+    return [row[0] for row in rows if row and row[0]]

@@ -9,6 +9,18 @@ logger = logging.getLogger(__name__)
 ALERT_LIMIT_PER_DAY = 5
 
 
+def _as_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [v for v in value if v is not None and str(v).strip() != ""]
+    if isinstance(value, str) and "," in value:
+        return [x.strip() for x in value.split(",") if x.strip()]
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    return [value]
+
+
 def filter_offers_by_preferences(
     offers: List[Dict[str, Any]],
     user_preferences: Optional[Dict[str, Any]] = None,
@@ -17,6 +29,15 @@ def filter_offers_by_preferences(
     if not user_preferences:
         return list(offers)
     out = []
+    districts = set(_as_list(user_preferences.get('district')))
+    metros = set(_as_list(user_preferences.get('metro')))
+    rooms_values = _as_list(user_preferences.get('rooms'))
+    rooms_set = set()
+    for r in rooms_values:
+        try:
+            rooms_set.add(int(r))
+        except (TypeError, ValueError):
+            continue
     for offer in offers:
         if user_preferences.get('price_max') is not None:
             if (offer.get('price') or 0) > user_preferences['price_max']:
@@ -24,8 +45,8 @@ def filter_offers_by_preferences(
         if user_preferences.get('price_min') is not None:
             if (offer.get('price') or 0) < user_preferences['price_min']:
                 continue
-        if user_preferences.get('district'):
-            if offer.get('district') != user_preferences['district']:
+        if districts:
+            if offer.get('district') not in districts:
                 continue
         if user_preferences.get('area_min') is not None:
             if (offer.get('total_area') or 0) < user_preferences['area_min']:
@@ -33,11 +54,15 @@ def filter_offers_by_preferences(
         if user_preferences.get('area_max') is not None:
             if (offer.get('total_area') or 0) > user_preferences['area_max']:
                 continue
-        if user_preferences.get('rooms') is not None:
-            if offer.get('rooms_count') != user_preferences['rooms']:
+        if rooms_set:
+            try:
+                offer_rooms = int(offer.get('rooms_count')) if offer.get('rooms_count') is not None else None
+            except (TypeError, ValueError):
+                offer_rooms = None
+            if offer_rooms not in rooms_set:
                 continue
-        if user_preferences.get('metro'):
-            if offer.get('metro') != user_preferences['metro']:
+        if metros:
+            if offer.get('metro') not in metros:
                 continue
         if user_preferences.get('travel_time_max') is not None:
             t = offer.get('travel_time')

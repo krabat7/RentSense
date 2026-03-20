@@ -11,7 +11,7 @@ from pathlib import Path
 import os
 
 from .scanner import scan_new_offers
-from .alert_logic import get_best_offers_for_user
+from .alert_logic import get_best_offers_for_user, ALERT_LIMIT_PER_DAY
 from .predict_client import get_predicted_price
 from .templates import format_offer_message
 from .database import (
@@ -85,6 +85,9 @@ async def send_alerts():
                     max_count=1,
                 )
                 if not best:
+                    continue
+                if user.alerts_today >= ALERT_LIMIT_PER_DAY:
+                    logger.info("Лимит алертов достигнут user_id=%s", user.user_id)
                     continue
                 offer = best[0]
                 message = format_offer_message(offer)
