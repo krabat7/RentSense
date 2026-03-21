@@ -96,8 +96,34 @@ async def main_keyboard_for_user(user_id: int) -> ReplyKeyboardMarkup:
 
 
 def _clear_filter_wizard(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Сброс режима «ждём текст для фильтра» при действии из главного меню."""
+    """Сброс мастера фильтров: ожидание текста и черновики inline (метро/комнаты)."""
     context.user_data.pop("await_filter_input", None)
+    context.user_data.pop("filter_draft_metro", None)
+    context.user_data.pop("filter_draft_rooms", None)
+
+
+async def _safe_query_edit(query, text: str, reply_markup=None) -> None:
+    """Telegram возвращает 400, если текст и клавиатура не изменились — не считаем это ошибкой."""
+    try:
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    except BadRequest as e:
+        msg = str(e).lower()
+        if "message is not modified" in msg or "not modified" in msg:
+            return
+        raise
+
+
+def _parse_cfg_callback(data: str) -> tuple[str | None, list[str]]:
+    """Разбор cfg:… без ломания ключей вроде travel_time_max."""
+    if not data.startswith("cfg:"):
+        return None, []
+    tail = data[4:]
+    if not tail:
+        return None, []
+    if ":" in tail:
+        key, rest0 = tail.split(":", 1)
+        return key, [rest0]
+    return tail, []
 
 
 async def _update_prefs_in_thread(user_id: int, updates: dict) -> None:
@@ -589,31 +615,41 @@ def _build_metro_menu(metros: list[str], selected: list[str], page: int) -> Inli
 
 async def _handle_filter_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str):
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     raw = (update.message.text or "").strip()
-    if key in MULTI_FILTER_KEYS:
-        values = _parse_list_text(raw)
-        if key in NUMERIC_KEYS:
-            parsed = []
-            for p in values:
-                val = _parse_set_value(key, p)
-                if val is None:
-                    await update.message.reply_text(
-                        f"Неверный формат: {p}. Введите значения через запятую.",
-                        reply_markup=await main_keyboard_for_user(user_id),
-                    )
-                    return
-                parsed.append(val)
-            values = parsed
-        await _update_prefs_in_thread(user_id, {key: values})
-    else:
-        value = _parse_set_value(key, raw)
-        if value is None:
-            await update.message.reply_text(
-                "Неверный формат значения. Попробуйте еще раз.",
-                reply_markup=await main_keyboard_for_user(user_id),
-            )
-            return
-        await _update_prefs_in_thread(user_id, {key: value})
+    try:
+        await asyncio.to_thread(_get_or_create_user, user_id, chat_id)
+        if key in MULTI_FILTER_KEYS:
+            values = _parse_list_text(raw)
+            if key in NUMERIC_KEYS:
+                parsed = []
+                for p in values:
+                    val = _parse_set_value(key, p)
+                    if val is None:
+                        await update.message.reply_text(
+                            f"Неверный формат: {p}. Введите значения через запятую.",
+                            reply_markup=await main_keyboard_for_user(user_id),
+                        )
+                        return
+                    parsed.append(val)
+                values = parsed
+            await _update_prefs_in_thread(user_id, {key: values})
+        else:
+            value = _parse_set_value(key, raw)
+            if value is None:
+                await update.message.reply_text(
+                    "Неверный формат значения. Попробуйте еще раз.",
+                    reply_markup=await main_keyboard_for_user(user_id),
+                )
+                return
+            await _update_prefs_in_thread(user_id, {key: value})
+    except Exception:
+        logger.exception("filter_text_input user_id=%s key=%s", user_id, key)
+        await update.message.reply_text(
+            "Не удалось сохранить фильтр (БД). Попробуйте позже или /cancel.",
+            reply_markup=await main_keyboard_for_user(user_id),
+        )
+        return
     context.user_data.pop("await_filter_input", None)
     await update.message.reply_text(
         "Фильтр сохранен.",
@@ -630,55 +666,91 @@ def _get_available_metro(context: ContextTypes.DEFAULT_TYPE):
 
 async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    if query is None:
+        return
     await query.answer()
     data = query.data or ""
     user_id = query.from_user.id
-    try:
-        prefs = await asyncio.to_thread(get_user_preferences, user_id)
-    except Exception:
-        logger.exception("callbacks_router: prefs user_id=%s", user_id)
-        await query.edit_message_text("Ошибка БД. Попробуйте /start.")
-        return
 
     if data.startswith("cfg:"):
-        _, key, *rest = data.split(":")
+        key, rest = _parse_cfg_callback(data)
+        if key is None:
+            return
         if key == "done":
-            await query.edit_message_text("Настройка завершена.")
+            context.user_data.pop("filter_draft_metro", None)
+            context.user_data.pop("filter_draft_rooms", None)
+            await _safe_query_edit(query, "Настройка завершена. Клавиатура снизу — главное меню.")
             return
         if key == "back":
-            await query.edit_message_text("Выбор фильтра:", reply_markup=_build_filter_menu())
+            context.user_data.pop("filter_draft_metro", None)
+            context.user_data.pop("filter_draft_rooms", None)
+            await _safe_query_edit(query, "Выбор фильтра:", reply_markup=_build_filter_menu())
             return
         if key == "metro":
             page = int(rest[0]) if rest else 0
+            try:
+                prefs = await asyncio.to_thread(get_user_preferences, user_id)
+            except Exception:
+                logger.exception("callbacks_router metro open user_id=%s", user_id)
+                await _safe_query_edit(query, "Ошибка БД. Попробуйте /start.")
+                return
             selected = _normalize_to_list(prefs.get("metro"))
-            await query.edit_message_text(
-                "Выберите метро (можно несколько):",
-                reply_markup=_build_metro_menu(_get_available_metro(context), selected, page),
+            context.user_data["filter_draft_metro"] = list(selected)
+            metros = _get_available_metro(context)
+            await _safe_query_edit(
+                "Выберите метро (можно несколько), затем «Сохранить»:",
+                reply_markup=_build_metro_menu(metros, selected, page),
             )
             return
         if key == "rooms":
+            try:
+                prefs = await asyncio.to_thread(get_user_preferences, user_id)
+            except Exception:
+                logger.exception("callbacks_router rooms open user_id=%s", user_id)
+                await _safe_query_edit(query, "Ошибка БД. Попробуйте /start.")
+                return
             selected_raw = _normalize_to_list(prefs.get("rooms"))
-            selected_rooms = [int(x) for x in selected_raw if str(x).isdigit()]
-            await query.edit_message_text(
+            current_int = [int(x) for x in selected_raw if str(x).isdigit()]
+            context.user_data["filter_draft_rooms"] = list(current_int)
+            await _safe_query_edit(
                 "Выберите комнаты (можно несколько):",
-                reply_markup=_build_rooms_menu(selected_rooms),
+                reply_markup=_build_rooms_menu(current_int),
             )
             return
         if key == "district":
             context.user_data["await_filter_input"] = "district"
-            await query.edit_message_text("Введите один или несколько районов через запятую.")
+            await _safe_query_edit(
+                "Введите один или несколько районов через запятую (сообщением в чат)."
+            )
             return
         context.user_data["await_filter_input"] = key
-        await query.edit_message_text(f"Введите значение для {key}.")
+        label = FILTER_KEYS.get(key, (key, str))[0]
+        await _safe_query_edit(
+            f"Введите значение для «{label}» ({key}) одним сообщением в чат."
+        )
         return
 
     if data.startswith("cfgrooms:"):
         action = data.split(":")[1]
-        current = _normalize_to_list(prefs.get("rooms"))
-        current_int = [int(x) for x in current if str(x).isdigit()]
+        current_int = context.user_data.get("filter_draft_rooms")
+        if current_int is None:
+            try:
+                prefs = await asyncio.to_thread(get_user_preferences, user_id)
+            except Exception:
+                logger.exception("cfgrooms prefs user_id=%s", user_id)
+                await _safe_query_edit(query, "Ошибка БД.")
+                return
+            current_int = [
+                int(x) for x in _normalize_to_list(prefs.get("rooms")) if str(x).isdigit()
+            ]
+            context.user_data["filter_draft_rooms"] = list(current_int)
         if action == "clear":
-            await _update_prefs_in_thread(user_id, {"rooms": []})
             current_int = []
+            context.user_data["filter_draft_rooms"] = []
+            try:
+                await _update_prefs_in_thread(user_id, {"rooms": []})
+            except Exception:
+                logger.exception("cfgrooms clear user_id=%s", user_id)
         else:
             value = int(action)
             if value in current_int:
@@ -686,21 +758,37 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 current_int.append(value)
             current_int = sorted(set(current_int))
-            await _update_prefs_in_thread(user_id, {"rooms": current_int})
-        await query.edit_message_text("Выберите комнаты (можно несколько):", reply_markup=_build_rooms_menu(current_int))
+            context.user_data["filter_draft_rooms"] = list(current_int)
+            try:
+                await _update_prefs_in_thread(user_id, {"rooms": current_int})
+            except Exception:
+                logger.exception("cfgrooms toggle user_id=%s", user_id)
+        await _safe_query_edit(
+            "Выберите комнаты (можно несколько):",
+            reply_markup=_build_rooms_menu(current_int),
+        )
         return
 
     if data.startswith("cfgmetro:"):
         parts = data.split(":")
         action = parts[1]
         metros = _get_available_metro(context)
-        selected = _normalize_to_list(prefs.get("metro"))
+        selected = context.user_data.get("filter_draft_metro")
+        if selected is None:
+            try:
+                prefs = await asyncio.to_thread(get_user_preferences, user_id)
+            except Exception:
+                logger.exception("cfgmetro prefs user_id=%s", user_id)
+                await _safe_query_edit(query, "Ошибка БД.")
+                return
+            selected = _normalize_to_list(prefs.get("metro"))
+            context.user_data["filter_draft_metro"] = list(selected)
         if action == "noop":
             return
         if action == "page":
             page = int(parts[2])
-            await query.edit_message_text(
-                "Выберите метро (можно несколько):",
+            await _safe_query_edit(
+                "Выберите метро (можно несколько), затем «Сохранить»:",
                 reply_markup=_build_metro_menu(metros, selected, page),
             )
             return
@@ -708,33 +796,43 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             page = int(parts[2])
             station_idx = int(parts[3])
             if station_idx < 0 or station_idx >= len(metros):
-                await query.edit_message_text(
+                await _safe_query_edit(
                     "Список метро обновился, выберите заново.",
                     reply_markup=_build_metro_menu(metros, selected, 0),
                 )
                 return
             station = metros[station_idx]
-            selected_set = set(selected)
-            if station in selected_set:
-                selected_set.remove(station)
+            sel_set = set(selected)
+            if station in sel_set:
+                sel_set.remove(station)
             else:
-                selected_set.add(station)
-            selected = sorted(selected_set)
-            await _update_prefs_in_thread(user_id, {"metro": selected})
-            await query.edit_message_text(
-                "Выберите метро (можно несколько):",
+                sel_set.add(station)
+            selected = sorted(sel_set)
+            context.user_data["filter_draft_metro"] = list(selected)
+            try:
+                await _update_prefs_in_thread(user_id, {"metro": selected})
+            except Exception:
+                logger.exception("cfgmetro toggle user_id=%s", user_id)
+            await _safe_query_edit(
+                "Выберите метро (можно несколько), затем «Сохранить»:",
                 reply_markup=_build_metro_menu(metros, selected, page),
             )
             return
         if action == "clear":
-            await _update_prefs_in_thread(user_id, {"metro": []})
-            await query.edit_message_text(
-                "Выберите метро (можно несколько):",
+            selected = []
+            context.user_data["filter_draft_metro"] = []
+            try:
+                await _update_prefs_in_thread(user_id, {"metro": []})
+            except Exception:
+                logger.exception("cfgmetro clear user_id=%s", user_id)
+            await _safe_query_edit(
+                "Выберите метро (можно несколько), затем «Сохранить»:",
                 reply_markup=_build_metro_menu(metros, [], 0),
             )
             return
         if action == "save":
-            await query.edit_message_text("Метро сохранено.", reply_markup=_build_filter_menu())
+            context.user_data.pop("filter_draft_metro", None)
+            await _safe_query_edit("Метро сохранено.", reply_markup=_build_filter_menu())
             return
 
 
@@ -754,16 +852,32 @@ async def _daily_reset(context: ContextTypes.DEFAULT_TYPE):
     await asyncio.to_thread(run_reset_daily)
 
 
+async def _on_bot_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Логирование и короткий ответ пользователю (иначе «тишина» после падения в хендлере)."""
+    logger.exception("Необработанная ошибка в хендлере бота", exc_info=context.error)
+    if not isinstance(update, Update):
+        return
+    text = "Произошла ошибка. Попробуйте ещё раз или /cancel — если бот ждал ввод фильтра."
+    try:
+        if update.callback_query and update.callback_query.message:
+            await update.callback_query.message.reply_text(text)
+        elif update.effective_message:
+            await update.effective_message.reply_text(text)
+    except Exception:
+        logger.exception("Не удалось отправить сообщение об ошибке пользователю")
+
+
 def main():
     if not TELEGRAM_BOT_TOKEN:
         logger.error("TELEGRAM_BOT_TOKEN не установлен")
         return
 
     init_bot_tables()
+    # Последовательная обработка: иначе гонки по context.user_data (мастер фильтров + callback).
     application = (
         Application.builder()
         .token(TELEGRAM_BOT_TOKEN)
-        .concurrent_updates(True)
+        .concurrent_updates(False)
         .build()
     )
     try:
@@ -771,6 +885,8 @@ def main():
     except Exception as e:
         logger.warning("Не удалось загрузить список метро: %s", e)
         application.bot_data["metro_options"] = []
+
+    application.add_error_handler(_on_bot_error)
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", menu_cmd))
@@ -803,7 +919,10 @@ def main():
         )
 
     logger.info("Бот запущен")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+    )
 
 
 if __name__ == "__main__":
