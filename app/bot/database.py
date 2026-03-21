@@ -57,7 +57,10 @@ PORT = os.getenv('DB_PORT') or env.get('DB_PORT') or '3307'
 DBNAME = os.getenv('DB_NAME') or env.get('DB_NAME') or 'rentsense'
 
 DATABASE_URL = f'{DBTYPE}://{LOGIN}:{PASS}@{IP}:{PORT}/{DBNAME}?charset=utf8mb4'
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+_engine_kwargs = {"pool_pre_ping": True, "pool_recycle": 3600}
+if "mysql" in (DBTYPE or "").lower():
+    _engine_kwargs["connect_args"] = {"connect_timeout": 10}
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine)
 
 MULTI_VALUE_KEYS = {"metro", "district", "rooms"}

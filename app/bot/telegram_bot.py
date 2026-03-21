@@ -7,6 +7,7 @@ Telegram бот: уведомления о выгодных объявления
 import asyncio
 import logging
 import os
+import unicodedata
 from datetime import datetime, time
 from telegram import (
     Update,
@@ -63,16 +64,44 @@ BUTTON_FILTERS = "Мои фильтры"
 BUTTON_CONFIGURE = "Настроить фильтры"
 BUTTON_RESET = "Сбросить фильтры"
 BUTTON_HELP = "Помощь"
+BUTTON_STATUS = "Статус"
 BUTTON_BACK = "Назад"
 
-MENU_KEYBOARD = ReplyKeyboardMarkup(
-    [
-        [BUTTON_ON, BUTTON_OFF],
-        [BUTTON_FILTERS, BUTTON_CONFIGURE],
-        [BUTTON_RESET, BUTTON_HELP],
-    ],
-    resize_keyboard=True,
-)
+
+def build_main_keyboard(is_active: bool) -> ReplyKeyboardMarkup:
+    """Одна кнопка: при включённых уведомлениях — «Выкл», при выключенных — «Вкл»."""
+    toggle = BUTTON_OFF if is_active else BUTTON_ON
+    return ReplyKeyboardMarkup(
+        [
+            [toggle],
+            [BUTTON_FILTERS, BUTTON_CONFIGURE],
+            [BUTTON_RESET, BUTTON_HELP],
+            [BUTTON_STATUS],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def _user_notifications_active(user_id: int) -> bool:
+    u = get_user(user_id)
+    if not u:
+        return True
+    return bool(u.is_active)
+
+
+async def main_keyboard_for_user(user_id: int) -> ReplyKeyboardMarkup:
+    is_active = await asyncio.to_thread(_user_notifications_active, user_id)
+    return build_main_keyboard(is_active)
+
+
+def _normalize_menu_text(s: str) -> str:
+    """Невидимые символы и полноширинное двоеточие — для совпадения с текстом кнопок Telegram."""
+    t = unicodedata.normalize("NFC", (s or "").strip())
+    for ch in ("\u200b", "\u200c", "\u200d", "\ufeff", "\u2060"):
+        t = t.replace(ch, "")
+    t = t.replace("\uff1a", ":")
+    return t
+
 
 MULTI_FILTER_KEYS = {"metro", "district", "rooms"}
 NUMERIC_KEYS = {"rooms", "area_min", "area_max", "price_min", "price_max", "travel_time_max"}
@@ -103,8 +132,9 @@ def _normalize_to_list(value):
 def _get_main_menu_text() -> str:
     return (
         "Главное меню:\n"
-        "• включение/выключение уведомлений\n"
-        "• просмотр и настройка фильтров\n"
+        "• одна кнопка уведомлений: «Вкл» или «Выкл» по текущему состоянию\n"
+        "• «Статус» — подписка и счётчик за день\n"
+        "• фильтры: просмотр и настройка\n"
         "• сброс фильтров"
     )
 
@@ -117,24 +147,28 @@ def _get_or_create_user(user_id: int, chat_id: int):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    _get_or_create_user(update.effective_user.id, update.effective_chat.id)
+    uid = update.effective_user.id
+    cid = update.effective_chat.id
+    await asyncio.to_thread(_get_or_create_user, uid, cid)
+    kb = await main_keyboard_for_user(uid)
     await update.message.reply_text(
         "Привет! Я бот RentSense.\n\n"
         "Я присылаю *выгодные* объявления за сегодня: где прогноз модели выше реальной цены.\n\n"
-        "• /on — включить уведомления\n"
-        "• /off — выключить уведомления\n"
+        "• Кнопка *Уведомления* — включить или выключить (подпись меняется)\n"
         "• /filters — посмотреть свои фильтры\n"
         "• /set ключ значение — задать фильтр (например: /set district Пресненский)\n"
         "• /reset_filters — сбросить все фильтры\n"
-        "• /status — статус и счётчик уведомлений\n\n"
+        "• /status или кнопка «Статус»\n\n"
         "Уведомления приходят с 9 до 23 по одному объявлению за раз. Если за день подходящих нет — пришлю подсказку расширить фильтры.",
         parse_mode='Markdown',
-        reply_markup=MENU_KEYBOARD,
+        reply_markup=kb,
     )
-    await update.message.reply_text(_get_main_menu_text(), reply_markup=MENU_KEYBOARD)
+    await update.message.reply_text(_get_main_menu_text(), reply_markup=kb)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    kb = await main_keyboard_for_user(uid)
     await update.message.reply_text(
         "Команды:\n"
         "/start — начать и создать профиль\n"
@@ -144,7 +178,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/set ключ значение — установить фильтр (или /set ключ сброс — сбросить один)\n"
         "/reset_filters — сбросить все фильтры\n"
         "/status — статус подписки и уведомлений за сегодня\n\n"
-        "Также можно использовать кнопки внизу экрана."
+        "Кнопки внизу: одна кнопка уведомлений (Вкл/Выкл по состоянию), «Статус», фильтры.",
+        reply_markup=kb,
     )
 
 
@@ -162,24 +197,61 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "\nФильтры:\n"
         for k, v in prefs.items():
             label = FILTER_KEYS.get(k, (k, str))[0]
-            msg += f"  • {label}: {v}\n"
+            if isinstance(v, list):
+                val = ", ".join(str(x) for x in v)
+            else:
+                val = str(v)
+            msg += f"  • {label}: {val}\n"
     else:
         msg += "\nФильтры не заданы — учитываются все объявления за сегодня."
-    await update.message.reply_text(msg)
+    kb = await main_keyboard_for_user(user_id)
+    await update.message.reply_text(msg, reply_markup=kb)
+
+
+def _sync_cmd_on(user_id: int, chat_id: int):
+    _get_or_create_user(user_id, chat_id)
+    set_user_active(user_id, True)
+
+
+def _sync_cmd_off(user_id: int, chat_id: int):
+    _get_or_create_user(user_id, chat_id)
+    set_user_active(user_id, False)
 
 
 async def cmd_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    _get_or_create_user(user_id, update.effective_chat.id)
-    set_user_active(user_id, True)
-    await update.message.reply_text("Уведомления включены. Буду присылать выгодные объявления по вашим фильтрам.")
+    chat_id = update.effective_chat.id
+    try:
+        await asyncio.to_thread(_sync_cmd_on, user_id, chat_id)
+    except Exception:
+        logger.exception("cmd_on: ошибка БД user_id=%s", user_id)
+        await update.message.reply_text(
+            "Не удалось сохранить настройки (нет связи с БД). Проверьте контейнер mysql и переменные DB_*.",
+            reply_markup=await main_keyboard_for_user(user_id),
+        )
+        return
+    await update.message.reply_text(
+        "Уведомления включены. Буду присылать выгодные объявления по вашим фильтрам.",
+        reply_markup=build_main_keyboard(True),
+    )
 
 
 async def cmd_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    _get_or_create_user(user_id, update.effective_chat.id)
-    set_user_active(user_id, False)
-    await update.message.reply_text("Уведомления выключены. Чтобы снова получать объявления — /on.")
+    chat_id = update.effective_chat.id
+    try:
+        await asyncio.to_thread(_sync_cmd_off, user_id, chat_id)
+    except Exception:
+        logger.exception("cmd_off: ошибка БД user_id=%s", user_id)
+        await update.message.reply_text(
+            "Не удалось сохранить настройки (нет связи с БД).",
+            reply_markup=await main_keyboard_for_user(user_id),
+        )
+        return
+    await update.message.reply_text(
+        "Уведомления выключены. Чтобы снова получать объявления — кнопка «Уведомления: Вкл» или /on.",
+        reply_markup=build_main_keyboard(False),
+    )
 
 
 def _format_filters(prefs: dict) -> str:
@@ -239,18 +311,42 @@ def _parse_list_text(raw: str):
 
 async def filters_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    prefs = get_user_preferences(user_id)
+    try:
+        prefs = await asyncio.to_thread(get_user_preferences, user_id)
+    except Exception:
+        logger.exception("filters_cmd: ошибка БД user_id=%s", user_id)
+        await update.message.reply_text(
+            "Не удалось загрузить фильтры (нет связи с БД).",
+            reply_markup=await main_keyboard_for_user(user_id),
+        )
+        return
     msg = "Ваши фильтры:\n\n" + _format_filters(prefs)
     msg += "\n\nЧтобы изменить: /set ключ значение\nСбросить один: /set ключ сброс\nСбросить все: /reset_filters"
-    await update.message.reply_text(msg)
+    await update.message.reply_text(msg, reply_markup=await main_keyboard_for_user(user_id))
+
+
+def _sync_reset_filters(user_id: int, chat_id: int):
+    _get_or_create_user(user_id, chat_id)
+    clear_user_preferences(user_id)
 
 
 async def reset_filters_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сбросить все фильтры."""
     user_id = update.effective_user.id
-    _get_or_create_user(user_id, update.effective_chat.id)
-    clear_user_preferences(user_id)
-    await update.message.reply_text("Все фильтры сброшены. Будут учитываться все объявления за сегодня.")
+    chat_id = update.effective_chat.id
+    try:
+        await asyncio.to_thread(_sync_reset_filters, user_id, chat_id)
+    except Exception:
+        logger.exception("reset_filters_cmd: ошибка БД user_id=%s", user_id)
+        await update.message.reply_text(
+            "Не удалось сбросить фильтры (нет связи с БД).",
+            reply_markup=await main_keyboard_for_user(user_id),
+        )
+        return
+    await update.message.reply_text(
+        "Все фильтры сброшены. Будут учитываться все объявления за сегодня.",
+        reply_markup=await main_keyboard_for_user(user_id),
+    )
 
 
 def _parse_set_value(key: str, raw: str):
@@ -328,29 +424,44 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(_get_main_menu_text(), reply_markup=MENU_KEYBOARD)
+    uid = update.effective_user.id
+    kb = await main_keyboard_for_user(uid)
+    await update.message.reply_text(_get_main_menu_text(), reply_markup=kb)
 
 
 async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
-    if text == BUTTON_ON:
+    text = _normalize_menu_text(update.message.text or "")
+    norm_on = _normalize_menu_text(BUTTON_ON)
+    norm_off = _normalize_menu_text(BUTTON_OFF)
+    norm_filters = _normalize_menu_text(BUTTON_FILTERS)
+    norm_configure = _normalize_menu_text(BUTTON_CONFIGURE)
+    norm_reset = _normalize_menu_text(BUTTON_RESET)
+    norm_help = _normalize_menu_text(BUTTON_HELP)
+    norm_status = _normalize_menu_text(BUTTON_STATUS)
+    if text == norm_on:
         await cmd_on(update, context)
-    elif text == BUTTON_OFF:
+    elif text == norm_off:
         await cmd_off(update, context)
-    elif text == BUTTON_FILTERS:
+    elif text == norm_filters:
         await filters_cmd(update, context)
-    elif text == BUTTON_CONFIGURE:
+    elif text == norm_configure:
         await _show_configure_filters(update, context)
-    elif text == BUTTON_RESET:
+    elif text == norm_reset:
         await reset_filters_cmd(update, context)
-    elif text == BUTTON_HELP:
+    elif text == norm_help:
         await help_command(update, context)
+    elif text == norm_status:
+        await status(update, context)
     else:
         waiting = context.user_data.get("await_filter_input")
         if waiting:
             await _handle_filter_text_input(update, context, waiting)
             return
-        await update.message.reply_text("Используйте кнопки меню или /help.", reply_markup=MENU_KEYBOARD)
+        uid = update.effective_user.id
+        await update.message.reply_text(
+            "Используйте кнопки меню или /help.",
+            reply_markup=await main_keyboard_for_user(uid),
+        )
 
 
 def _metro_page_items(metros: list[str], page: int, page_size: int = 8):
@@ -390,7 +501,10 @@ async def _handle_filter_text_input(update: Update, context: ContextTypes.DEFAUL
             for p in values:
                 val = _parse_set_value(key, p)
                 if val is None:
-                    await update.message.reply_text(f"Неверный формат: {p}. Введите значения через запятую.", reply_markup=MENU_KEYBOARD)
+                    await update.message.reply_text(
+                        f"Неверный формат: {p}. Введите значения через запятую.",
+                        reply_markup=await main_keyboard_for_user(user_id),
+                    )
                     return
                 parsed.append(val)
             values = parsed
@@ -398,11 +512,17 @@ async def _handle_filter_text_input(update: Update, context: ContextTypes.DEFAUL
     else:
         value = _parse_set_value(key, raw)
         if value is None:
-            await update.message.reply_text("Неверный формат значения. Попробуйте еще раз.", reply_markup=MENU_KEYBOARD)
+            await update.message.reply_text(
+                "Неверный формат значения. Попробуйте еще раз.",
+                reply_markup=await main_keyboard_for_user(user_id),
+            )
             return
         update_user_preferences(user_id, {key: value})
     context.user_data.pop("await_filter_input", None)
-    await update.message.reply_text("Фильтр сохранен.", reply_markup=MENU_KEYBOARD)
+    await update.message.reply_text(
+        "Фильтр сохранен.",
+        reply_markup=await main_keyboard_for_user(user_id),
+    )
 
 
 def _get_available_metro(context: ContextTypes.DEFAULT_TYPE):
