@@ -100,9 +100,13 @@ def _clear_filter_wizard(context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data.pop("await_filter_input", None)
 
 
-def _sync_build_status_message(user_id: int, chat_id: int) -> str:
-    _get_or_create_user(user_id, chat_id)
-    user = get_user(user_id)
+async def _update_prefs_in_thread(user_id: int, updates: dict) -> None:
+    await asyncio.to_thread(update_user_preferences, user_id, updates)
+
+
+def _sync_status_payload(user_id: int, chat_id: int) -> tuple[str, bool]:
+    """Текст статуса + is_active для клавиатуры — один заход в БД по сути."""
+    user = _get_or_create_user(user_id, chat_id)
     prefs = get_user_preferences(user_id)
     status_text = "✅ Уведомления включены" if user.is_active else "❌ Уведомления выключены"
     msg = (
@@ -120,7 +124,18 @@ def _sync_build_status_message(user_id: int, chat_id: int) -> str:
             msg += f"  • {label}: {val}\n"
     else:
         msg += "\nФильтры не заданы — учитываются все объявления за сегодня."
-    return msg
+    return msg, bool(user.is_active)
+
+
+def _sync_start_keyboard_state(user_id: int, chat_id: int) -> bool:
+    _get_or_create_user(user_id, chat_id)
+    return _user_notifications_active(user_id)
+
+
+def _sync_filters_and_active(user_id: int) -> tuple[dict, bool]:
+    prefs = get_user_preferences(user_id)
+    active = _user_notifications_active(user_id)
+    return prefs, active
 
 
 def _normalize_menu_text(s: str) -> str:
@@ -179,8 +194,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _clear_filter_wizard(context)
     uid = update.effective_user.id
     cid = update.effective_chat.id
-    await asyncio.to_thread(_get_or_create_user, uid, cid)
-    kb = await main_keyboard_for_user(uid)
+    is_active = await asyncio.to_thread(_sync_start_keyboard_state, uid, cid)
+    kb = build_main_keyboard(is_active)
     await update.message.reply_text(
         "Привет! Я бот RentSense.\n\n"
         "Я присылаю *выгодные* объявления за сегодня: где прогноз модели выше реальной цены.\n\n"
@@ -231,7 +246,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
-        msg = await asyncio.to_thread(_sync_build_status_message, user_id, chat_id)
+        msg, is_active = await asyncio.to_thread(_sync_status_payload, user_id, chat_id)
     except Exception:
         logger.exception("status: ошибка БД user_id=%s", user_id)
         await update.message.reply_text(
@@ -239,7 +254,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=await main_keyboard_for_user(user_id),
         )
         return
-    kb = await main_keyboard_for_user(user_id)
+    kb = build_main_keyboard(is_active)
     try:
         await update.message.reply_text(msg, reply_markup=kb)
     except BadRequest as e:
@@ -367,7 +382,7 @@ async def filters_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _clear_filter_wizard(context)
     user_id = update.effective_user.id
     try:
-        prefs = await asyncio.to_thread(get_user_preferences, user_id)
+        prefs, is_active = await asyncio.to_thread(_sync_filters_and_active, user_id)
     except Exception:
         logger.exception("filters_cmd: ошибка БД user_id=%s", user_id)
         await update.message.reply_text(
@@ -377,7 +392,7 @@ async def filters_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     msg = "Ваши фильтры:\n\n" + _format_filters(prefs)
     msg += "\n\nЧтобы изменить: /set ключ значение\nСбросить один: /set ключ сброс\nСбросить все: /reset_filters"
-    await update.message.reply_text(msg, reply_markup=await main_keyboard_for_user(user_id))
+    await update.message.reply_text(msg, reply_markup=build_main_keyboard(is_active))
 
 
 def _sync_reset_filters(user_id: int, chat_id: int):
@@ -434,7 +449,8 @@ def _parse_set_value(key: str, raw: str):
 
 async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    _get_or_create_user(user_id, update.effective_chat.id)
+    chat_id = update.effective_chat.id
+    await asyncio.to_thread(_get_or_create_user, user_id, chat_id)
     if not context.args or len(context.args) < 2:
         await update.message.reply_text(
             "Использование: /set ключ значение\n"
@@ -453,7 +469,7 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     value_raw = " ".join(context.args[1:]).strip() if len(context.args) > 1 else ""
     if value_raw.lower() in ("сброс", "clear", "удалить", ""):
-        update_user_preferences(user_id, {key: None})
+        await _update_prefs_in_thread(user_id, {key: None})
         await update.message.reply_text(f"Фильтр «{key}» сброшен.")
         return
     if key in MULTI_FILTER_KEYS:
@@ -474,7 +490,7 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if value is None:
         await update.message.reply_text(f"Неверное значение для «{key}». Ожидается число.")
         return
-    update_user_preferences(user_id, {key: value})
+    await _update_prefs_in_thread(user_id, {key: value})
     label = FILTER_KEYS[key][0]
     await update.message.reply_text(f"Фильтр обновлён: {label} = {value}.")
 
@@ -588,7 +604,7 @@ async def _handle_filter_text_input(update: Update, context: ContextTypes.DEFAUL
                     return
                 parsed.append(val)
             values = parsed
-        update_user_preferences(user_id, {key: values})
+        await _update_prefs_in_thread(user_id, {key: values})
     else:
         value = _parse_set_value(key, raw)
         if value is None:
@@ -597,7 +613,7 @@ async def _handle_filter_text_input(update: Update, context: ContextTypes.DEFAUL
                 reply_markup=await main_keyboard_for_user(user_id),
             )
             return
-        update_user_preferences(user_id, {key: value})
+        await _update_prefs_in_thread(user_id, {key: value})
     context.user_data.pop("await_filter_input", None)
     await update.message.reply_text(
         "Фильтр сохранен.",
@@ -661,7 +677,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current = _normalize_to_list(prefs.get("rooms"))
         current_int = [int(x) for x in current if str(x).isdigit()]
         if action == "clear":
-            update_user_preferences(user_id, {"rooms": []})
+            await _update_prefs_in_thread(user_id, {"rooms": []})
             current_int = []
         else:
             value = int(action)
@@ -670,7 +686,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 current_int.append(value)
             current_int = sorted(set(current_int))
-            update_user_preferences(user_id, {"rooms": current_int})
+            await _update_prefs_in_thread(user_id, {"rooms": current_int})
         await query.edit_message_text("Выберите комнаты (можно несколько):", reply_markup=_build_rooms_menu(current_int))
         return
 
@@ -704,14 +720,14 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 selected_set.add(station)
             selected = sorted(selected_set)
-            update_user_preferences(user_id, {"metro": selected})
+            await _update_prefs_in_thread(user_id, {"metro": selected})
             await query.edit_message_text(
                 "Выберите метро (можно несколько):",
                 reply_markup=_build_metro_menu(metros, selected, page),
             )
             return
         if action == "clear":
-            update_user_preferences(user_id, {"metro": []})
+            await _update_prefs_in_thread(user_id, {"metro": []})
             await query.edit_message_text(
                 "Выберите метро (можно несколько):",
                 reply_markup=_build_metro_menu(metros, [], 0),
@@ -744,7 +760,12 @@ def main():
         return
 
     init_bot_tables()
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    application = (
+        Application.builder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .concurrent_updates(True)
+        .build()
+    )
     try:
         application.bot_data["metro_options"] = get_available_metro_stations(limit=500)
     except Exception as e:
