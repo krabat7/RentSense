@@ -15,6 +15,7 @@ from telegram import (
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
 )
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -94,6 +95,34 @@ async def main_keyboard_for_user(user_id: int) -> ReplyKeyboardMarkup:
     return build_main_keyboard(is_active)
 
 
+def _clear_filter_wizard(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Сброс режима «ждём текст для фильтра» при действии из главного меню."""
+    context.user_data.pop("await_filter_input", None)
+
+
+def _sync_build_status_message(user_id: int, chat_id: int) -> str:
+    _get_or_create_user(user_id, chat_id)
+    user = get_user(user_id)
+    prefs = get_user_preferences(user_id)
+    status_text = "✅ Уведомления включены" if user.is_active else "❌ Уведомления выключены"
+    msg = (
+        f"{status_text}\n"
+        f"Уведомлений сегодня: {user.alerts_today}\n"
+    )
+    if prefs:
+        msg += "\nФильтры:\n"
+        for k, v in prefs.items():
+            label = FILTER_KEYS.get(k, (k, str))[0]
+            if isinstance(v, list):
+                val = ", ".join(str(x) for x in v)
+            else:
+                val = str(v)
+            msg += f"  • {label}: {val}\n"
+    else:
+        msg += "\nФильтры не заданы — учитываются все объявления за сегодня."
+    return msg
+
+
 def _normalize_menu_text(s: str) -> str:
     """Невидимые символы и полноширинное двоеточие — для совпадения с текстом кнопок Telegram."""
     t = unicodedata.normalize("NFC", (s or "").strip())
@@ -147,6 +176,7 @@ def _get_or_create_user(user_id: int, chat_id: int):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _clear_filter_wizard(context)
     uid = update.effective_user.id
     cid = update.effective_chat.id
     await asyncio.to_thread(_get_or_create_user, uid, cid)
@@ -166,46 +196,59 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(_get_main_menu_text(), reply_markup=kb)
 
 
+HELP_TEXT = (
+    "Команды:\n"
+    "/start — начать и создать профиль\n"
+    "/on — включить уведомления\n"
+    "/off — выключить уведомления\n"
+    "/filters — текущие фильтры\n"
+    "/set ключ значение — установить фильтр (или /set ключ сброс — сбросить один)\n"
+    "/reset_filters — сбросить все фильтры\n"
+    "/status — статус подписки и уведомлений за сегодня\n"
+    "/cancel — отменить ввод фильтра (если бот ждёт текст)\n\n"
+    "Кнопки внизу: одна кнопка уведомлений (Вкл/Выкл по состоянию), «Статус», фильтры."
+)
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _clear_filter_wizard(context)
     uid = update.effective_user.id
-    kb = await main_keyboard_for_user(uid)
-    await update.message.reply_text(
-        "Команды:\n"
-        "/start — начать и создать профиль\n"
-        "/on — включить уведомления\n"
-        "/off — выключить уведомления\n"
-        "/filters — текущие фильтры\n"
-        "/set ключ значение — установить фильтр (или /set ключ сброс — сбросить один)\n"
-        "/reset_filters — сбросить все фильтры\n"
-        "/status — статус подписки и уведомлений за сегодня\n\n"
-        "Кнопки внизу: одна кнопка уведомлений (Вкл/Выкл по состоянию), «Статус», фильтры.",
-        reply_markup=kb,
-    )
+    try:
+        kb = await main_keyboard_for_user(uid)
+        await update.message.reply_text(HELP_TEXT, reply_markup=kb)
+    except BadRequest as e:
+        logger.warning("help_command: не удалось отправить клавиатуру: %s", e)
+        await update.message.reply_text(HELP_TEXT)
+        try:
+            kb = await main_keyboard_for_user(uid)
+            await update.message.reply_text("\u2060", reply_markup=kb)
+        except BadRequest as e2:
+            logger.warning("help_command: повторная клавиатура не прошла: %s", e2)
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _clear_filter_wizard(context)
     user_id = update.effective_user.id
-    _get_or_create_user(user_id, update.effective_chat.id)
-    user = get_user(user_id)
-    prefs = get_user_preferences(user_id)
-    status_text = "✅ Уведомления включены" if user.is_active else "❌ Уведомления выключены"
-    msg = (
-        f"{status_text}\n"
-        f"Уведомлений сегодня: {user.alerts_today}\n"
-    )
-    if prefs:
-        msg += "\nФильтры:\n"
-        for k, v in prefs.items():
-            label = FILTER_KEYS.get(k, (k, str))[0]
-            if isinstance(v, list):
-                val = ", ".join(str(x) for x in v)
-            else:
-                val = str(v)
-            msg += f"  • {label}: {val}\n"
-    else:
-        msg += "\nФильтры не заданы — учитываются все объявления за сегодня."
+    chat_id = update.effective_chat.id
+    try:
+        msg = await asyncio.to_thread(_sync_build_status_message, user_id, chat_id)
+    except Exception:
+        logger.exception("status: ошибка БД user_id=%s", user_id)
+        await update.message.reply_text(
+            "Не удалось загрузить статус (БД).",
+            reply_markup=await main_keyboard_for_user(user_id),
+        )
+        return
     kb = await main_keyboard_for_user(user_id)
-    await update.message.reply_text(msg, reply_markup=kb)
+    try:
+        await update.message.reply_text(msg, reply_markup=kb)
+    except BadRequest as e:
+        logger.warning("status: reply с клавиатурой не прошёл: %s", e)
+        await update.message.reply_text(msg)
+        try:
+            await update.message.reply_text("\u2060", reply_markup=kb)
+        except BadRequest as e2:
+            logger.warning("status: повтор клавиатуры: %s", e2)
 
 
 def _sync_cmd_on(user_id: int, chat_id: int):
@@ -219,6 +262,7 @@ def _sync_cmd_off(user_id: int, chat_id: int):
 
 
 async def cmd_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _clear_filter_wizard(context)
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
@@ -237,6 +281,7 @@ async def cmd_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _clear_filter_wizard(context)
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
@@ -298,7 +343,16 @@ def _build_rooms_menu(selected_rooms: list[int]) -> InlineKeyboardMarkup:
 
 
 async def _show_configure_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    prefs = get_user_preferences(update.effective_user.id)
+    uid = update.effective_user.id
+    try:
+        prefs = await asyncio.to_thread(get_user_preferences, uid)
+    except Exception:
+        logger.exception("_show_configure_filters: БД uid=%s", uid)
+        await update.message.reply_text(
+            "Не удалось загрузить фильтры (БД).",
+            reply_markup=await main_keyboard_for_user(uid),
+        )
+        return
     await update.message.reply_text(
         "Выбор фильтра для настройки.\nТекущие:\n" + _format_filters(prefs),
         reply_markup=_build_filter_menu(),
@@ -310,6 +364,7 @@ def _parse_list_text(raw: str):
 
 
 async def filters_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _clear_filter_wizard(context)
     user_id = update.effective_user.id
     try:
         prefs = await asyncio.to_thread(get_user_preferences, user_id)
@@ -332,6 +387,7 @@ def _sync_reset_filters(user_id: int, chat_id: int):
 
 async def reset_filters_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сбросить все фильтры."""
+    _clear_filter_wizard(context)
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
@@ -424,9 +480,18 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _clear_filter_wizard(context)
     uid = update.effective_user.id
     kb = await main_keyboard_for_user(uid)
     await update.message.reply_text(_get_main_menu_text(), reply_markup=kb)
+
+
+async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    had = "await_filter_input" in context.user_data
+    _clear_filter_wizard(context)
+    uid = update.effective_user.id
+    msg = "Ввод фильтра отменён." if had else "Сейчас бот не ждёт ввод фильтра."
+    await update.message.reply_text(msg, reply_markup=await main_keyboard_for_user(uid))
 
 
 async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -438,6 +503,16 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     norm_reset = _normalize_menu_text(BUTTON_RESET)
     norm_help = _normalize_menu_text(BUTTON_HELP)
     norm_status = _normalize_menu_text(BUTTON_STATUS)
+    if text in (
+        norm_on,
+        norm_off,
+        norm_filters,
+        norm_configure,
+        norm_reset,
+        norm_help,
+        norm_status,
+    ):
+        _clear_filter_wizard(context)
     if text == norm_on:
         await cmd_on(update, context)
     elif text == norm_off:
@@ -458,6 +533,11 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _handle_filter_text_input(update, context, waiting)
             return
         uid = update.effective_user.id
+        logger.debug(
+            "button_router: неизвестный текст user_id=%s repr=%r",
+            uid,
+            update.message.text,
+        )
         await update.message.reply_text(
             "Используйте кнопки меню или /help.",
             reply_markup=await main_keyboard_for_user(uid),
@@ -537,7 +617,12 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data or ""
     user_id = query.from_user.id
-    prefs = get_user_preferences(user_id)
+    try:
+        prefs = await asyncio.to_thread(get_user_preferences, user_id)
+    except Exception:
+        logger.exception("callbacks_router: prefs user_id=%s", user_id)
+        await query.edit_message_text("Ошибка БД. Попробуйте /start.")
+        return
 
     if data.startswith("cfg:"):
         _, key, *rest = data.split(":")
@@ -674,6 +759,7 @@ def main():
     application.add_handler(CommandHandler("off", cmd_off))
     application.add_handler(CommandHandler("filters", filters_cmd))
     application.add_handler(CommandHandler("reset_filters", reset_filters_cmd))
+    application.add_handler(CommandHandler("cancel", cancel_cmd))
     application.add_handler(CommandHandler("set", set_cmd))
     application.add_handler(CallbackQueryHandler(callbacks_router))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, button_router))
@@ -704,4 +790,5 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO,
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     main()
