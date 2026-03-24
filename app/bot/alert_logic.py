@@ -32,10 +32,17 @@ def filter_offers_by_preferences(
     districts = set(_as_list(user_preferences.get('district')))
     metros = set(_as_list(user_preferences.get('metro')))
     rooms_values = _as_list(user_preferences.get('rooms'))
-    rooms_set = set()
+    want_studio = False
+    rooms_nums = set()
     for r in rooms_values:
+        if r is None:
+            continue
+        s = str(r).strip().lower()
+        if s in ("studio", "студия", "студ"):
+            want_studio = True
+            continue
         try:
-            rooms_set.add(int(r))
+            rooms_nums.add(int(r))
         except (TypeError, ValueError):
             continue
     for offer in offers:
@@ -54,12 +61,23 @@ def filter_offers_by_preferences(
         if user_preferences.get('area_max') is not None:
             if (offer.get('total_area') or 0) > user_preferences['area_max']:
                 continue
-        if rooms_set:
+        if want_studio or rooms_nums:
+            ft = (offer.get("flat_type") or "").strip().lower()
+            is_studio = ft == "studio"
             try:
-                offer_rooms = int(offer.get('rooms_count')) if offer.get('rooms_count') is not None else None
+                offer_rooms = int(float(offer.get("rooms_count"))) if offer.get("rooms_count") is not None else None
             except (TypeError, ValueError):
                 offer_rooms = None
-            if offer_rooms not in rooms_set:
+            room_ok = False
+            if want_studio and is_studio:
+                room_ok = True
+            for n in rooms_nums:
+                if n == 1:
+                    if offer_rooms == 1 and not is_studio:
+                        room_ok = True
+                elif offer_rooms == n:
+                    room_ok = True
+            if not room_ok:
                 continue
         if metros:
             if offer.get('metro') not in metros:

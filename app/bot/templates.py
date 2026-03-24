@@ -63,7 +63,11 @@ def format_offer_message(offer: dict) -> str:
         message += f"📐 *Площадь:* {total_area:.1f} м²\n"
     
     if rooms_count:
-        message += f"🚪 *Комнат:* {int(rooms_count)}\n"
+        ft = (offer.get("flat_type") or "").strip().lower()
+        if ft == "studio":
+            message += "🚪 *Студия*\n"
+        else:
+            message += f"🚪 *Комнат:* {int(rooms_count)}\n"
     
     message += f"📍 *Район:* {district}\n"
     message += f"🏛 *Адрес:* {address}\n"

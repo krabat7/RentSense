@@ -144,7 +144,7 @@ def _sync_status_payload(user_id: int, chat_id: int) -> tuple[str, bool]:
         for k, v in prefs.items():
             label = FILTER_KEYS.get(k, (k, str))[0]
             if isinstance(v, list):
-                val = ", ".join(str(x) for x in v)
+                val = _format_rooms_pref_display(v) if k == "rooms" else ", ".join(str(x) for x in v)
             else:
                 val = str(v)
             msg += f"  • {label}: {val}\n"
@@ -174,7 +174,9 @@ def _normalize_menu_text(s: str) -> str:
 
 
 MULTI_FILTER_KEYS = {"metro", "district", "rooms"}
-NUMERIC_KEYS = {"rooms", "area_min", "area_max", "price_min", "price_max", "travel_time_max"}
+# rooms — смешанный список int и "studio" (flat_type в БД); парсится отдельно
+NUMERIC_KEYS = {"area_min", "area_max", "price_min", "price_max", "travel_time_max"}
+ROOM_STUDIO = "studio"
 EDITABLE_FILTER_KEYS = [
     "metro",
     "district",
@@ -197,6 +199,52 @@ def _normalize_to_list(value):
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return [value] if value != "" else []
+
+
+def _parse_room_token(raw: str):
+    """Одно значение фильтра комнат: число или студия (как flat_type=studio в БД)."""
+    s = (raw or "").strip().lower()
+    if s in ("studio", "студия", "студ"):
+        return ROOM_STUDIO
+    try:
+        return int(s.replace(" ", ""))
+    except ValueError:
+        return None
+
+
+def _normalize_rooms_selection(items) -> list:
+    """Список для preferences: studio один раз + уникальные int по возрастанию."""
+    want_studio = False
+    nums: set[int] = set()
+    for x in items or []:
+        if x is None:
+            continue
+        if isinstance(x, str) and str(x).strip().lower() in ("studio", "студия", "студ"):
+            want_studio = True
+        elif isinstance(x, int):
+            nums.add(x)
+        elif isinstance(x, str) and str(x).strip().isdigit():
+            nums.add(int(str(x).strip()))
+    out: list = [ROOM_STUDIO] if want_studio else []
+    out.extend(sorted(nums))
+    return out
+
+
+def _rooms_draft_from_prefs(pref_val) -> list:
+    """Загрузка черновика комнат из JSON preferences."""
+    return _normalize_rooms_selection(_normalize_to_list(pref_val))
+
+
+def _format_rooms_pref_display(items) -> str:
+    if not items:
+        return ""
+    parts = []
+    for x in items:
+        if str(x).strip().lower() in ("studio", "студия"):
+            parts.append("Студия")
+        else:
+            parts.append(str(x))
+    return ", ".join(parts)
 
 
 def _get_main_menu_text() -> str:
@@ -347,7 +395,7 @@ def _format_filters(prefs: dict) -> str:
     for k, v in prefs.items():
         label = FILTER_KEYS.get(k, (k, str))[0]
         if isinstance(v, list):
-            val = ", ".join(str(x) for x in v)
+            val = _format_rooms_pref_display(v) if k == "rooms" else ", ".join(str(x) for x in v)
         else:
             val = str(v)
         lines.append(f"  {label}: {val}")
@@ -367,9 +415,20 @@ def _build_filter_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def _build_rooms_menu(selected_rooms: list[int]) -> InlineKeyboardMarkup:
-    selected = set(selected_rooms or [])
+def _build_rooms_menu(selected_rooms: list) -> InlineKeyboardMarkup:
+    selected: set = set()
+    for x in selected_rooms or []:
+        if isinstance(x, str) and str(x).strip().lower() in ("studio", "студия", "студ"):
+            selected.add(ROOM_STUDIO)
+        elif isinstance(x, int):
+            selected.add(x)
+        elif str(x).strip().isdigit():
+            selected.add(int(str(x).strip()))
     rows = []
+    mark_s = "✅" if ROOM_STUDIO in selected else "☑️"
+    rows.append(
+        [InlineKeyboardButton(f"{mark_s} Студия", callback_data="cfgrooms:studio")]
+    )
     row = []
     for r in [1, 2, 3, 4, 5]:
         mark = "✅" if r in selected else "☑️"
@@ -482,7 +541,7 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Использование: /set ключ значение\n"
             "Примеры:\n"
             "/set district Пресненский\n"
-            "/set rooms 2\n"
+            "/set rooms 2, studio\n"
             "/set price_max 80000\n"
             "Ключи: district, rooms, area_min, area_max, price_min, price_max, metro, travel_time_max"
         )
@@ -500,7 +559,18 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if key in MULTI_FILTER_KEYS:
         parts = _parse_list_text(value_raw)
-        if key in NUMERIC_KEYS:
+        if key == "rooms":
+            parsed = []
+            for p in parts:
+                pv = _parse_room_token(p)
+                if pv is None:
+                    await update.message.reply_text(
+                        f"Неверное значение для «rooms»: {p}. Число комнат или studio/студия."
+                    )
+                    return
+                parsed.append(pv)
+            value = _normalize_rooms_selection(parsed)
+        elif key in NUMERIC_KEYS:
             parsed = []
             for p in parts:
                 pv = _parse_set_value(key, p)
@@ -621,7 +691,19 @@ async def _handle_filter_text_input(update: Update, context: ContextTypes.DEFAUL
         await asyncio.to_thread(_get_or_create_user, user_id, chat_id)
         if key in MULTI_FILTER_KEYS:
             values = _parse_list_text(raw)
-            if key in NUMERIC_KEYS:
+            if key == "rooms":
+                parsed = []
+                for p in values:
+                    val = _parse_room_token(p)
+                    if val is None:
+                        await update.message.reply_text(
+                            f"Неверный формат: {p}. Числа и/или studio через запятую.",
+                            reply_markup=await main_keyboard_for_user(user_id),
+                        )
+                        return
+                    parsed.append(val)
+                values = _normalize_rooms_selection(parsed)
+            elif key in NUMERIC_KEYS:
                 parsed = []
                 for p in values:
                     val = _parse_set_value(key, p)
@@ -710,13 +792,12 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.exception("callbacks_router rooms open user_id=%s", user_id)
                 await _safe_query_edit(query, "Ошибка БД. Попробуйте /start.")
                 return
-            selected_raw = _normalize_to_list(prefs.get("rooms"))
-            current_int = [int(x) for x in selected_raw if str(x).isdigit()]
-            context.user_data["filter_draft_rooms"] = list(current_int)
+            draft_rooms = _rooms_draft_from_prefs(prefs.get("rooms"))
+            context.user_data["filter_draft_rooms"] = list(draft_rooms)
             await _safe_query_edit(
                 query,
                 "Выберите комнаты (можно несколько):",
-                reply_markup=_build_rooms_menu(current_int),
+                reply_markup=_build_rooms_menu(draft_rooms),
             )
             return
         if key == "district":
@@ -736,41 +817,59 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("cfgrooms:"):
         action = data.split(":")[1]
-        current_int = context.user_data.get("filter_draft_rooms")
-        if current_int is None:
+        draft_rooms = context.user_data.get("filter_draft_rooms")
+        if draft_rooms is None:
             try:
                 prefs = await asyncio.to_thread(get_user_preferences, user_id)
             except Exception:
                 logger.exception("cfgrooms prefs user_id=%s", user_id)
                 await _safe_query_edit(query, "Ошибка БД.")
                 return
-            current_int = [
-                int(x) for x in _normalize_to_list(prefs.get("rooms")) if str(x).isdigit()
-            ]
-            context.user_data["filter_draft_rooms"] = list(current_int)
+            draft_rooms = _rooms_draft_from_prefs(prefs.get("rooms"))
+            context.user_data["filter_draft_rooms"] = list(draft_rooms)
         if action == "clear":
-            current_int = []
+            draft_rooms = []
             context.user_data["filter_draft_rooms"] = []
             try:
                 await _update_prefs_in_thread(user_id, {"rooms": []})
             except Exception:
                 logger.exception("cfgrooms clear user_id=%s", user_id)
+        elif action == "studio":
+            draft_rooms = list(draft_rooms)
+            has_studio = any(
+                isinstance(x, str) and str(x).strip().lower() == ROOM_STUDIO for x in draft_rooms
+            )
+            if has_studio:
+                draft_rooms = [
+                    x
+                    for x in draft_rooms
+                    if not (isinstance(x, str) and str(x).strip().lower() == ROOM_STUDIO)
+                ]
+            else:
+                draft_rooms.append(ROOM_STUDIO)
+            draft_rooms = _normalize_rooms_selection(draft_rooms)
+            context.user_data["filter_draft_rooms"] = list(draft_rooms)
+            try:
+                await _update_prefs_in_thread(user_id, {"rooms": draft_rooms})
+            except Exception:
+                logger.exception("cfgrooms studio toggle user_id=%s", user_id)
         else:
             value = int(action)
-            if value in current_int:
-                current_int.remove(value)
+            draft_rooms = list(draft_rooms)
+            if value in draft_rooms:
+                draft_rooms = [x for x in draft_rooms if x != value]
             else:
-                current_int.append(value)
-            current_int = sorted(set(current_int))
-            context.user_data["filter_draft_rooms"] = list(current_int)
+                draft_rooms.append(value)
+            draft_rooms = _normalize_rooms_selection(draft_rooms)
+            context.user_data["filter_draft_rooms"] = list(draft_rooms)
             try:
-                await _update_prefs_in_thread(user_id, {"rooms": current_int})
+                await _update_prefs_in_thread(user_id, {"rooms": draft_rooms})
             except Exception:
                 logger.exception("cfgrooms toggle user_id=%s", user_id)
         await _safe_query_edit(
             query,
             "Выберите комнаты (можно несколько):",
-            reply_markup=_build_rooms_menu(current_int),
+            reply_markup=_build_rooms_menu(context.user_data.get("filter_draft_rooms", [])),
         )
         return
 
