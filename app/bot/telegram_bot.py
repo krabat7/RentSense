@@ -698,6 +698,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["filter_draft_metro"] = list(selected)
             metros = _get_available_metro(context)
             await _safe_query_edit(
+                query,
                 "Выберите метро (можно несколько), затем «Сохранить»:",
                 reply_markup=_build_metro_menu(metros, selected, page),
             )
@@ -713,6 +714,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             current_int = [int(x) for x in selected_raw if str(x).isdigit()]
             context.user_data["filter_draft_rooms"] = list(current_int)
             await _safe_query_edit(
+                query,
                 "Выберите комнаты (можно несколько):",
                 reply_markup=_build_rooms_menu(current_int),
             )
@@ -720,13 +722,15 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if key == "district":
             context.user_data["await_filter_input"] = "district"
             await _safe_query_edit(
-                "Введите один или несколько районов через запятую (сообщением в чат)."
+                query,
+                "Введите один или несколько районов через запятую (сообщением в чат).",
             )
             return
         context.user_data["await_filter_input"] = key
         label = FILTER_KEYS.get(key, (key, str))[0]
         await _safe_query_edit(
-            f"Введите значение для «{label}» ({key}) одним сообщением в чат."
+            query,
+            f"Введите значение для «{label}» ({key}) одним сообщением в чат.",
         )
         return
 
@@ -764,6 +768,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 logger.exception("cfgrooms toggle user_id=%s", user_id)
         await _safe_query_edit(
+            query,
             "Выберите комнаты (можно несколько):",
             reply_markup=_build_rooms_menu(current_int),
         )
@@ -788,6 +793,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == "page":
             page = int(parts[2])
             await _safe_query_edit(
+                query,
                 "Выберите метро (можно несколько), затем «Сохранить»:",
                 reply_markup=_build_metro_menu(metros, selected, page),
             )
@@ -797,6 +803,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             station_idx = int(parts[3])
             if station_idx < 0 or station_idx >= len(metros):
                 await _safe_query_edit(
+                    query,
                     "Список метро обновился, выберите заново.",
                     reply_markup=_build_metro_menu(metros, selected, 0),
                 )
@@ -814,6 +821,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 logger.exception("cfgmetro toggle user_id=%s", user_id)
             await _safe_query_edit(
+                query,
                 "Выберите метро (можно несколько), затем «Сохранить»:",
                 reply_markup=_build_metro_menu(metros, selected, page),
             )
@@ -826,13 +834,14 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 logger.exception("cfgmetro clear user_id=%s", user_id)
             await _safe_query_edit(
+                query,
                 "Выберите метро (можно несколько), затем «Сохранить»:",
                 reply_markup=_build_metro_menu(metros, [], 0),
             )
             return
         if action == "save":
             context.user_data.pop("filter_draft_metro", None)
-            await _safe_query_edit("Метро сохранено.", reply_markup=_build_filter_menu())
+            await _safe_query_edit(query, "Метро сохранено.", reply_markup=_build_filter_menu())
             return
 
 
