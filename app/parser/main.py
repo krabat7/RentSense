@@ -912,6 +912,84 @@ def prePage(data, type=0):
     return {}
 
 
+def fetch_flat_page_requests_proxies(flat_id: str, max_tries: int = 8) -> str | None:
+    """
+    Загрузка HTML объявления через requests + прокси (как в ocenomet), без Playwright.
+    Для /getparams после неудачного прямого httpx.
+    """
+    import requests
+
+    url = f"{URL}/rent/flat/{flat_id}/"
+    check_and_unfreeze_proxies()
+    load_proxy_bans()
+
+    non_empty = {k: v for k, v in proxyDict.items() if k}
+    if non_empty:
+        mintime = min(non_empty.values())
+        if mintime > time.time():
+            wait = mintime - time.time()
+            # Интерактивный API: не ждать долгую разблокировку прокси (ocenomet: >=10s → skip)
+            if wait < 10:
+                time.sleep(min(wait, 8.0))
+            else:
+                logging.info(
+                    "fetch_flat_page_requests_proxies: proxies cooling %.0fs, skip wait", wait
+                )
+
+    available = [
+        k
+        for k, v in proxyDict.items()
+        if k and v <= time.time() and not proxyTemporaryBan.get(k, False)
+    ]
+    random.shuffle(available)
+    proxy_order = available[:max_tries] if available else []
+    if not proxy_order:
+        proxy_order = [None]
+
+    hdr_list = headers if headers else [{}]
+    for proxy in proxy_order:
+        try:
+            kw: dict = {"headers": random.choice(hdr_list), "timeout": 20}
+            if proxy:
+                kw["proxies"] = {"http": proxy, "https": proxy}
+            r = requests.get(url, **kw)
+            if r.status_code != 200:
+                continue
+            text = r.text
+            if '"offerData"' not in text:
+                continue
+            low = text.lower()
+            if "tmgrdfrend/showcaptcha" in low:
+                continue
+            return text
+        except Exception as e:
+            if proxy:
+                proxyDict[proxy] = time.time() + 90
+            logging.debug("fetch_flat_page_requests_proxies: %s", e)
+            continue
+    return None
+
+
+def parse_rent_flat_for_api(flat_id: str) -> dict | None:
+    """
+    Путь только для FastAPI /getparams: httpx → requests+прокси, без Playwright и без ProcessPool.
+    Аналог ocenomet (to_thread + лёгкий HTTP).
+    """
+    html = fetch_flat_page_html_http(flat_id)
+    if not html:
+        html = fetch_flat_page_requests_proxies(str(flat_id))
+    if not html:
+        logging.warning("parse_rent_flat_for_api: no HTML for flat_id=%s", flat_id)
+        return None
+    page_js = prePage(html, type=1)
+    if not page_js:
+        logging.warning("parse_rent_flat_for_api: prePage empty for flat_id=%s", flat_id)
+        return None
+    data = pagecheck(page_js)
+    if not data:
+        return None
+    data.pop("photos", None)
+    return data
 
 
 def listPages(page, sort=None, rooms=None):

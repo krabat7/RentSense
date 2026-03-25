@@ -47,3 +47,4 @@ htmlcov/
 
 # CatBoost artifacts
 catboost_info/
+local-repo-converted.txt

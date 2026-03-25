@@ -1,14 +1,10 @@
-import asyncio
 import logging
-import multiprocessing
 import re
-from concurrent.futures import ProcessPoolExecutor
-from contextlib import asynccontextmanager
 
 import pandas as pd
 import numpy as np
 import uvicorn
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException
 
 from .model_loader import load_baseline_model, load_quantile_models
 from .models import Params, PredictReq, PredictResponse
@@ -20,29 +16,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
-def _run_apart_page_in_process(flat_id: str, dbinsert: bool = False):
-    """
-    Вызов парсера в отдельном процессе.
-    Playwright sync API несовместим с asyncio.to_thread (greenlet.error: cannot switch to a different thread).
-    """
-    from app.parser.main import apartPage
-    return apartPage([flat_id], dbinsert=dbinsert)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    ctx = multiprocessing.get_context("spawn")
-    app.state.process_pool = ProcessPoolExecutor(max_workers=2, mp_context=ctx)
-    yield
-    app.state.process_pool.shutdown(wait=True)
-
-
 app = FastAPI(
     title="RentSense API",
     description="API для предсказания стоимости аренды недвижимости",
     version="2.0",
-    lifespan=lifespan,
 )
 
 # Загрузка моделей при старте
@@ -63,17 +40,16 @@ def _extract_flat_id(url: str) -> str | None:
 
 
 @router.get('/getparams')
-async def getparams(request: Request, url: str):
+async def getparams(url: str):
     """Извлечение параметров объявления из URL Циана."""
     try:
+        from app.parser.main import parse_rent_flat_for_api
+
         flat_id = _extract_flat_id(url)
         if not flat_id:
             raise HTTPException(status_code=400, detail='Неверный формат объявления')
-        loop = asyncio.get_event_loop()
-        pool = request.app.state.process_pool
-        data = await loop.run_in_executor(
-            pool, _run_apart_page_in_process, flat_id, False
-        )
+        # Поток + только HTTP (как ocenomet), без ProcessPool/Playwright — секунды вместо минуты
+        data = await to_thread(parse_rent_flat_for_api, flat_id)
         if data is None or not isinstance(data, dict):
             raise HTTPException(
                 status_code=400,
