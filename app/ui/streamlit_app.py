@@ -232,9 +232,11 @@ def validate_for_predict(data: Dict[str, Any]) -> List[str]:
                 missing.append(label)
     has_coords = data.get("coordinates") and isinstance(data.get("coordinates"), dict) and data["coordinates"].get("lat") is not None and data["coordinates"].get("lng") is not None
     has_district = data.get("district") and str(data.get("district")).strip()
+    has_metro = data.get("metro") and str(data.get("metro")).strip()
     has_travel = data.get("travel_time") is not None
-    if not has_coords and not (has_district and has_travel):
-        missing.append("координаты или район и время до метро")
+    # С Циана часто есть метро + время пешком, но без названия района — это достаточно для геоконтекста
+    if not has_coords and not ((has_district or has_metro) and has_travel):
+        missing.append("координаты или (район/метро и время до метро)")
     return missing
 
 
@@ -535,13 +537,22 @@ else:
                 predict_data = getparams_to_predict_data(flat)
                 missing = validate_for_predict(predict_data)
                 if missing:
-                    st.warning("Для прогноза не хватает: " + ", ".join(missing))
+                    st.error(
+                        "Объявление загружено, но для прогноза не хватает: "
+                        + ", ".join(missing)
+                    )
+                    st.caption("Проверьте ответ API /getparams или введите параметры вручную во втором режиме.")
                 else:
                     result = call_predict_api(predict_data)
                     if result:
                         st.session_state["prediction_data"] = predict_data
                         st.session_state["prediction_result"] = result
                         st.session_state["prediction_from_link"] = True
+                    else:
+                        st.error(
+                            "Параметры объявления получены, но прогноз не вернулся "
+                            "(сбой запроса /predict — сообщение об ошибке выше)."
+                        )
 
 if "prediction_result" in st.session_state and st.session_state["prediction_result"]:
     render_result(
