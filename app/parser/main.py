@@ -18,6 +18,46 @@ except ImportError:
 
 URL = 'https://www.cian.ru'
 
+
+def fetch_flat_page_html_http(flat_id: str, timeout: float = 20.0) -> str | None:
+    """
+    Одна страница объявления без Playwright (быстрый путь для API getparams / Streamlit).
+    Циан отдаёт offerData в HTML — тот же разбор, что и после браузера.
+    """
+    import httpx
+
+    url = f"{URL}/rent/flat/{flat_id}/"
+    hdrs = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.cian.ru/",
+    }
+    try:
+        with httpx.Client(follow_redirects=True, timeout=timeout) as client:
+            r = client.get(url, headers=hdrs)
+        if r.status_code != 200:
+            logging.info(
+                "fetch_flat_page_html_http: status %s for flat_id=%s", r.status_code, flat_id
+            )
+            return None
+        text = r.text
+        if '"offerData"' not in text:
+            logging.info("fetch_flat_page_html_http: no offerData, flat_id=%s", flat_id)
+            return None
+        low = text.lower()
+        if "tmgrdfrend/showcaptcha" in low or "showcaptcha" in low:
+            logging.info("fetch_flat_page_html_http: captcha page, flat_id=%s", flat_id)
+            return None
+        return text
+    except Exception as e:
+        logging.warning("fetch_flat_page_html_http: flat_id=%s err=%s", flat_id, e)
+        return None
+
+
 _playwright = None
 _browser = None
 
@@ -276,15 +316,17 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             if page in _captcha_count:
                 _captcha_count[page] = 0
             
-            # Более широкий диапазон задержек для имитации человеческого поведения (3-20 секунд)
-            # Иногда быстрее (3-8 сек), иногда медленнее (12-20 сек) - как реальный пользователь
-            if random.random() < 0.7:  # 70% случаев - быстрые запросы
-                delay = random.uniform(3, 12)
-            else:  # 30% случаев - более медленные запросы
-                delay = random.uniform(12, 25)
-            logging.info(f'getResponse (curl_cffi): Success, content length={len(content)}, waiting {delay:.1f}s before next request')
-            time.sleep(delay)
-            
+            # Паузы только при массовом парсинге (dbinsert), иначе Streamlit/API ждут лишние секунды
+            if dbinsert:
+                if random.random() < 0.7:
+                    delay = random.uniform(3, 12)
+                else:
+                    delay = random.uniform(12, 25)
+                logging.info(
+                    f"getResponse (curl_cffi): Success, len={len(content)}, wait {delay:.1f}s (batch)"
+                )
+                time.sleep(delay)
+
             logging.info(f'getResponse (curl_cffi): Success, content length={len(content)}')
             return content
             
@@ -630,7 +672,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             if page in _captcha_count:
                 _captcha_count[page] = 0
             
-            if single_offer:
+            if single_offer or not dbinsert:
                 delay = 0
             else:
                 if random.random() < 0.7:
@@ -931,8 +973,23 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
             skipped_count += 1
             logging.info(f"Apart page {page} skipped after {retry_count} failed attempts")
             continue
-        
-        response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2)  # Прокси как у парсера — стабильнее и в пределах таймаута
+
+        # Режим «по ссылке» (Streamlit): сначала быстрый HTTP без браузера
+        if not dbinsert:
+            html_fast = fetch_flat_page_html_http(str(page))
+            if html_fast:
+                page_js_fast = prePage(html_fast, type=1)
+                if page_js_fast and (data_fast := pagecheck(page_js_fast)):
+                    data_fast.pop("photos", None)
+                    logging.info("Apart page %s parsed via fast HTTP (getparams)", page)
+                    return data_fast
+            logging.info("Apart page %s: fast HTTP miss, fallback to getResponse", page)
+
+        # Интерактив: без прокси быстрее; при провале — с прокси как у парсера
+        use_px = bool(dbinsert)
+        response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2, use_proxy=use_px)
+        if not dbinsert and (not response or response == "CAPTCHA"):
+            response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2, use_proxy=True)
         
         # Обработка CAPTCHA - пропускаем объявление
         if response == 'CAPTCHA':
@@ -1034,65 +1091,4 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
     
     # По умолчанию возвращаем 'OK' для обработанных страниц
     return 'OK'
-
-
-
-    # Если все объявления отфильтрованы, возвращаем 'FILTERED'
-    if filtered_count > 0 and pages_cnt == 0:
-        logging.info(f"All {filtered_count} offers were filtered out")
-        return 'FILTERED'
-    
-    # Если все объявления пропущены (CAPTCHA/ошибки), возвращаем 'SKIPPED'
-    if skipped_count > 0 and pages_cnt == 0:
-        logging.warning(f"All {skipped_count} offers were skipped due to errors/CAPTCHA")
-        return 'SKIPPED'
-    
-    # Если список был пуст или ничего не обработано
-    if len(pagesList) == 0:
-        logging.warning("Empty pagesList passed to apartPage")
-        return None
-    
-    # По умолчанию возвращаем 'OK' для обработанных страниц
-    return 'OK'
-
-
-
-    # Если все объявления отфильтрованы, возвращаем 'FILTERED'
-    if filtered_count > 0 and pages_cnt == 0:
-        logging.info(f"All {filtered_count} offers were filtered out")
-        return 'FILTERED'
-    
-    # Если все объявления пропущены (CAPTCHA/ошибки), возвращаем 'SKIPPED'
-    if skipped_count > 0 and pages_cnt == 0:
-        logging.warning(f"All {skipped_count} offers were skipped due to errors/CAPTCHA")
-        return 'SKIPPED'
-    
-    # Если список был пуст или ничего не обработано
-    if len(pagesList) == 0:
-        logging.warning("Empty pagesList passed to apartPage")
-        return None
-    
-    # По умолчанию возвращаем 'OK' для обработанных страниц
-    return 'OK'
-
-
-
-    # Если все объявления отфильтрованы, возвращаем 'FILTERED'
-    if filtered_count > 0 and pages_cnt == 0:
-        logging.info(f"All {filtered_count} offers were filtered out")
-        return 'FILTERED'
-    
-    # Если все объявления пропущены (CAPTCHA/ошибки), возвращаем 'SKIPPED'
-    if skipped_count > 0 and pages_cnt == 0:
-        logging.warning(f"All {skipped_count} offers were skipped due to errors/CAPTCHA")
-        return 'SKIPPED'
-    
-    # Если список был пуст или ничего не обработано
-    if len(pagesList) == 0:
-        logging.warning("Empty pagesList passed to apartPage")
-        return None
-    
-    # По умолчанию возвращаем 'OK' для обработанных страниц
-    return 'OK'
-
 
