@@ -1,5 +1,8 @@
+import asyncio
 import logging
+import multiprocessing
 import re
+from concurrent.futures import ProcessPoolExecutor
 
 import pandas as pd
 import numpy as np
@@ -15,6 +18,23 @@ from .theards import to_thread
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Один воркер: тяжёлый Playwright только если лёгкий HTTP-путь не смог (изолирован от asyncio)
+_getparams_fallback_pool: ProcessPoolExecutor | None = None
+
+
+def _get_getparams_fallback_pool() -> ProcessPoolExecutor:
+    global _getparams_fallback_pool
+    if _getparams_fallback_pool is None:
+        ctx = multiprocessing.get_context("spawn")
+        _getparams_fallback_pool = ProcessPoolExecutor(max_workers=1, mp_context=ctx)
+    return _getparams_fallback_pool
+
+
+def _apart_page_playwright_getparams(flat_id: str):
+    from app.parser.main import apartPage
+
+    return apartPage([flat_id], dbinsert=False)
 
 app = FastAPI(
     title="RentSense API",
@@ -48,8 +68,15 @@ async def getparams(url: str):
         flat_id = _extract_flat_id(url)
         if not flat_id:
             raise HTTPException(status_code=400, detail='Неверный формат объявления')
-        # Поток + только HTTP (как ocenomet), без ProcessPool/Playwright — секунды вместо минуты
         data = await to_thread(parse_rent_flat_for_api, flat_id)
+        if data is None or not isinstance(data, dict):
+            logger.info("getparams: лёгкий парсер не справился, fallback Playwright flat_id=%s", flat_id)
+            loop = asyncio.get_running_loop()
+            data = await loop.run_in_executor(
+                _get_getparams_fallback_pool(),
+                _apart_page_playwright_getparams,
+                flat_id,
+            )
         if data is None or not isinstance(data, dict):
             raise HTTPException(
                 status_code=400,

@@ -26,8 +26,14 @@ def pagecheck(pageJS: dict):
     if offers['cian_id'] is None or offers['price'] is None:
         return
 
-    if page.get('trackingData', {}).get('oblId') != 1:
-        return
+    # Раньше отсекали всё не-Москву — для Streamlit/getparams ссылки из других регионов выглядели как «снято»
+    obl_id = page.get('trackingData', {}).get('oblId')
+    if obl_id is not None and obl_id != 1:
+        logging.info(
+            "pagecheck: cian_id=%s oblId=%s (не Москва), объявление всё равно принимаем",
+            cianid,
+            obl_id,
+        )
     # Обработка фотографий
     if page.get('photos'):
         offers['photos_count'] = len(page['photos'])

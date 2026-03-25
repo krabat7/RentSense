@@ -58,6 +58,36 @@ def fetch_flat_page_html_http(flat_id: str, timeout: float = 20.0) -> str | None
         return None
 
 
+def fetch_flat_page_curl_cffi_direct(flat_id: str, timeout: float = 25.0) -> str | None:
+    """Обход части антибота Циана с сервера (TLS fingerprint как у Chrome)."""
+    if not CURL_CFFI_AVAILABLE:
+        return None
+    url = f"{URL}/rent/flat/{flat_id}/"
+    hdrs = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.cian.ru/",
+    }
+    try:
+        r = curl_requests.get(url, headers=hdrs, timeout=timeout, impersonate="chrome110")
+        if r.status_code != 200:
+            logging.info(
+                "fetch_flat_page_curl_cffi_direct: status %s flat_id=%s",
+                r.status_code,
+                flat_id,
+            )
+            return None
+        text = r.text
+        if '"offerData"' not in text:
+            return None
+        if "tmgrdfrend/showcaptcha" in text.lower():
+            return None
+        return text
+    except Exception as e:
+        logging.warning("fetch_flat_page_curl_cffi_direct: flat_id=%s %s", flat_id, e)
+        return None
+
+
 _playwright = None
 _browser = None
 
@@ -977,6 +1007,8 @@ def parse_rent_flat_for_api(flat_id: str) -> dict | None:
     """
     html = fetch_flat_page_html_http(flat_id)
     if not html:
+        html = fetch_flat_page_curl_cffi_direct(str(flat_id))
+    if not html:
         html = fetch_flat_page_requests_proxies(str(flat_id))
     if not html:
         logging.warning("parse_rent_flat_for_api: no HTML for flat_id=%s", flat_id)
@@ -1055,6 +1087,10 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
         # Режим «по ссылке» (Streamlit): сначала быстрый HTTP без браузера
         if not dbinsert:
             html_fast = fetch_flat_page_html_http(str(page))
+            if not html_fast:
+                html_fast = fetch_flat_page_curl_cffi_direct(str(page))
+            if not html_fast:
+                html_fast = fetch_flat_page_requests_proxies(str(page))
             if html_fast:
                 page_js_fast = prePage(html_fast, type=1)
                 if page_js_fast and (data_fast := pagecheck(page_js_fast)):
@@ -1141,7 +1177,11 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
         continue
     
     logging.info(f"Apart pages {pagesList[:5]}{'...' if len(pagesList) > 5 else ''} processed. Added: {pages_cnt}, Existing: {existing_count}, Filtered: {filtered_count}, Skipped: {skipped_count}")
-    
+
+    # Один id + getparams/Streamlit: не возвращать 'FILTERED'/'OK' — иначе API думает что это dict
+    if len(pagesList) == 1 and not dbinsert:
+        return None
+
     # Если были добавлены новые объявления, возвращаем 'OK'
     if pages_cnt > 0:
         logging.info(f"SUCCESS: Added {pages_cnt} new offers from {len(pagesList)} total")
