@@ -3,6 +3,7 @@ import random
 import time
 import re
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from playwright.sync_api import sync_playwright
 from .database import DB, model_classes
 from .pagecheck import pagecheck
@@ -942,7 +943,9 @@ def prePage(data, type=0):
     return {}
 
 
-def fetch_flat_page_requests_proxies(flat_id: str, max_tries: int = 8) -> str | None:
+def fetch_flat_page_requests_proxies(
+    flat_id: str, max_tries: int = 8, request_timeout: int = 20
+) -> str | None:
     """
     Загрузка HTML объявления через requests + прокси (как в ocenomet), без Playwright.
     Для /getparams после неудачного прямого httpx.
@@ -979,7 +982,7 @@ def fetch_flat_page_requests_proxies(flat_id: str, max_tries: int = 8) -> str | 
     hdr_list = headers if headers else [{}]
     for proxy in proxy_order:
         try:
-            kw: dict = {"headers": random.choice(hdr_list), "timeout": 20}
+            kw: dict = {"headers": random.choice(hdr_list), "timeout": request_timeout}
             if proxy:
                 kw["proxies"] = {"http": proxy, "https": proxy}
             r = requests.get(url, **kw)
@@ -1000,16 +1003,62 @@ def fetch_flat_page_requests_proxies(flat_id: str, max_tries: int = 8) -> str | 
     return None
 
 
+def _html_has_usable_offer_data(html: str | None) -> bool:
+    if not html or '"offerData"' not in html:
+        return False
+    low = html.lower()
+    if "tmgrdfrend/showcaptcha" in low:
+        return False
+    return True
+
+
+def race_fetch_flat_html_for_api(flat_id: str, wait_seconds: float = 20.0) -> str | None:
+    """
+    Параллельно: httpx, curl_cffi, requests+прокси — кто первым принёс валидный HTML с offerData.
+    Укладывается в ~wait_seconds вместо суммы трёх последовательных таймаутов.
+    """
+    fid = str(flat_id)
+
+    def run_http():
+        try:
+            return fetch_flat_page_html_http(fid, timeout=min(14.0, wait_seconds))
+        except Exception:
+            return None
+
+    def run_curl():
+        try:
+            return fetch_flat_page_curl_cffi_direct(fid, timeout=min(18.0, wait_seconds))
+        except Exception:
+            return None
+
+    def run_req():
+        try:
+            return fetch_flat_page_requests_proxies(
+                fid, max_tries=6, request_timeout=min(14, int(wait_seconds))
+            )
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(run_http), pool.submit(run_curl), pool.submit(run_req)]
+        try:
+            for fut in as_completed(futures, timeout=wait_seconds):
+                try:
+                    html = fut.result()
+                except Exception:
+                    continue
+                if _html_has_usable_offer_data(html):
+                    return html
+        except TimeoutError:
+            logging.info("race_fetch_flat_html_for_api: общий таймаут %.0fs flat_id=%s", wait_seconds, fid)
+    return None
+
+
 def parse_rent_flat_for_api(flat_id: str) -> dict | None:
     """
-    Путь только для FastAPI /getparams: httpx → requests+прокси, без Playwright и без ProcessPool.
-    Аналог ocenomet (to_thread + лёгкий HTTP).
+    Путь только для FastAPI /getparams: параллельный HTTP, без Playwright и без ProcessPool.
     """
-    html = fetch_flat_page_html_http(flat_id)
-    if not html:
-        html = fetch_flat_page_curl_cffi_direct(str(flat_id))
-    if not html:
-        html = fetch_flat_page_requests_proxies(str(flat_id))
+    html = race_fetch_flat_html_for_api(flat_id, wait_seconds=22.0)
     if not html:
         logging.warning("parse_rent_flat_for_api: no HTML for flat_id=%s", flat_id)
         return None
@@ -1086,11 +1135,7 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
 
         # Режим «по ссылке» (Streamlit): сначала быстрый HTTP без браузера
         if not dbinsert:
-            html_fast = fetch_flat_page_html_http(str(page))
-            if not html_fast:
-                html_fast = fetch_flat_page_curl_cffi_direct(str(page))
-            if not html_fast:
-                html_fast = fetch_flat_page_requests_proxies(str(page))
+            html_fast = race_fetch_flat_html_for_api(str(page), wait_seconds=22.0)
             if html_fast:
                 page_js_fast = prePage(html_fast, type=1)
                 if page_js_fast and (data_fast := pagecheck(page_js_fast)):
