@@ -1,7 +1,7 @@
 """
 Скрипт обучения бейзлайн моделей для предсказания цены аренды.
 
-Обучение CatBoost и LightGBM моделей регрессии с метриками MAE, RMSE, MAPE,
+Обучение CatBoost, LightGBM и XGBoost моделей регрессии с метриками MAE, RMSE, MAPE,
 квантилями P10, P50, P90 и логированием в MLflow.
 """
 
@@ -18,7 +18,9 @@ from mlflow_config import init_mlflow
 
 from catboost import CatBoostRegressor
 from lightgbm import LGBMRegressor
+from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.preprocessing import OrdinalEncoder
 
 
 def calculate_mape(y_true, y_pred):
@@ -35,6 +37,30 @@ def calculate_quantiles(y_true, y_pred):
         'P50': np.percentile(errors, 50),
         'P90': np.percentile(errors, 90)
     }
+
+
+def _prepare_x_for_lgb_xgb(X, categorical_cols):
+    """Копия матрицы признаков в том же виде, что при обучении LGBM/XGB."""
+    Xp = X.copy()
+    for col in categorical_cols:
+        if col in Xp.columns:
+            Xp[col] = Xp[col].astype('category')
+    for col in Xp.select_dtypes(include=['object']).columns:
+        if col not in categorical_cols:
+            Xp[col] = pd.to_numeric(Xp[col], errors='coerce').fillna(0)
+    return Xp
+
+
+def _prepare_x_for_xgb_inference(X, xgb_model):
+    """Та же обработка категорий, что в train_xgboost (OrdinalEncoder с модели)."""
+    Xp = X.copy()
+    enc = getattr(xgb_model, "_xgb_ord_enc", None)
+    cats = getattr(xgb_model, "_xgb_cat_present", None) or []
+    if enc is not None and cats:
+        Xp[cats] = enc.transform(Xp[cats].astype(str))
+    for col in Xp.select_dtypes(include=["object"]).columns:
+        Xp[col] = pd.to_numeric(Xp[col], errors="coerce").fillna(0)
+    return Xp.astype(np.float64)
 
 
 def analyze_correlations(df, target_col='price_actual', min_corr=0.01):
@@ -215,10 +241,18 @@ def train_catboost(X_train, y_train, X_test, y_test, categorical_cols,
     return model, metrics_train, metrics_test, quantiles_test
 
 
-def train_lightgbm(X_train, y_train, X_test, y_test, categorical_cols, run_name="lightgbm_baseline"):
+def train_lightgbm(X_train, y_train, X_test, y_test, categorical_cols,
+                     use_log_price=False, run_name="lightgbm_baseline"):
     """Обучение LightGBM модели."""
     print("\nОбучение LightGBM...")
-    
+    if use_log_price:
+        print("  Используется логарифмирование цены")
+        y_train_fit = np.log1p(y_train)
+        y_test_fit = np.log1p(y_test)
+    else:
+        y_train_fit = y_train
+        y_test_fit = y_test
+
     X_train_lgb = X_train.copy()
     X_test_lgb = X_test.copy()
     
@@ -241,14 +275,20 @@ def train_lightgbm(X_train, y_train, X_test, y_test, categorical_cols, run_name=
     )
     
     model.fit(
-        X_train_lgb, y_train,
-        eval_set=[(X_test_lgb, y_test)],
+        X_train_lgb, y_train_fit,
+        eval_set=[(X_test_lgb, y_test_fit)],
         eval_metric='rmse',
         callbacks=[lambda env: None]
     )
     
-    y_pred_train = model.predict(X_train_lgb)
-    y_pred_test = model.predict(X_test_lgb)
+    y_pred_train_log = model.predict(X_train_lgb)
+    y_pred_test_log = model.predict(X_test_lgb)
+    if use_log_price:
+        y_pred_train = np.expm1(y_pred_train_log)
+        y_pred_test = np.expm1(y_pred_test_log)
+    else:
+        y_pred_train = y_pred_train_log
+        y_pred_test = y_pred_test_log
     
     metrics_train = {
         'train_mae': mean_absolute_error(y_train, y_pred_train),
@@ -284,6 +324,96 @@ def train_lightgbm(X_train, y_train, X_test, y_test, categorical_cols, run_name=
     return model, metrics_train, metrics_test, quantiles_test
 
 
+def train_xgboost(X_train, y_train, X_test, y_test, categorical_cols,
+                  use_log_price=False, run_name="xgboost_baseline"):
+    """Обучение XGBoost (hist). Категории — OrdinalEncoder (train/test согласованы, unknown → -1)."""
+    print("\nОбучение XGBoost...")
+    if use_log_price:
+        print("  Используется логарифмирование цены")
+        y_train_fit = np.log1p(y_train)
+        y_test_fit = np.log1p(y_test)
+    else:
+        y_train_fit = y_train
+        y_test_fit = y_test
+
+    X_tr = X_train.copy()
+    X_te = X_test.copy()
+
+    enc = None
+    cat_present = [c for c in categorical_cols if c in X_tr.columns]
+    if cat_present:
+        enc = OrdinalEncoder(
+            handle_unknown="use_encoded_value",
+            unknown_value=-1,
+            encoded_missing_value=-1,
+            dtype=np.float64,
+        )
+        X_tr[cat_present] = enc.fit_transform(X_tr[cat_present].astype(str))
+        X_te[cat_present] = enc.transform(X_te[cat_present].astype(str))
+
+    for col in X_tr.select_dtypes(include=['object']).columns:
+        X_tr[col] = pd.to_numeric(X_tr[col], errors='coerce').fillna(0)
+        X_te[col] = pd.to_numeric(X_te[col], errors='coerce').fillna(0)
+
+    X_tr = X_tr.astype(np.float64)
+    X_te = X_te.astype(np.float64)
+
+    model = XGBRegressor(
+        n_estimators=500,
+        learning_rate=0.1,
+        max_depth=6,
+        random_state=42,
+        n_jobs=-1,
+        tree_method='hist',
+    )
+
+    model.fit(
+        X_tr,
+        y_train_fit,
+        eval_set=[(X_te, y_test_fit)],
+        verbose=100,
+    )
+
+    y_pred_train_log = model.predict(X_tr)
+    y_pred_test_log = model.predict(X_te)
+    if use_log_price:
+        y_pred_train = np.expm1(y_pred_train_log)
+        y_pred_test = np.expm1(y_pred_test_log)
+    else:
+        y_pred_train = y_pred_train_log
+        y_pred_test = y_pred_test_log
+
+    metrics_train = {
+        'train_mae': mean_absolute_error(y_train, y_pred_train),
+        'train_rmse': np.sqrt(mean_squared_error(y_train, y_pred_train)),
+        'train_mape': calculate_mape(y_train, y_pred_train),
+    }
+    metrics_test = {
+        'test_mae': mean_absolute_error(y_test, y_pred_test),
+        'test_rmse': np.sqrt(mean_squared_error(y_test, y_pred_test)),
+        'test_mape': calculate_mape(y_test, y_pred_test),
+    }
+    quantiles_test = calculate_quantiles(y_test, y_pred_test)
+
+    print("\nМетрики XGBoost (Train):")
+    print(f"  MAE: {metrics_train['train_mae']:.2f}")
+    print(f"  RMSE: {metrics_train['train_rmse']:.2f}")
+    print(f"  MAPE: {metrics_train['train_mape']:.2f}%")
+    print("\nМетрики XGBoost (Test):")
+    print(f"  MAE: {metrics_test['test_mae']:.2f}")
+    print(f"  RMSE: {metrics_test['test_rmse']:.2f}")
+    print(f"  MAPE: {metrics_test['test_mape']:.2f}%")
+    print("\nКвантили ошибки (Test):")
+    print(f"  P10: {quantiles_test['P10']:.2f}")
+    print(f"  P50: {quantiles_test['P50']:.2f}")
+    print(f"  P90: {quantiles_test['P90']:.2f}")
+
+    model._X_train_prepared = X_tr
+    model._xgb_ord_enc = enc
+    model._xgb_cat_present = cat_present
+    return model, metrics_train, metrics_test, quantiles_test
+
+
 def log_model_to_mlflow(model, model_name, X_train, y_train, metrics_train, metrics_test, quantiles_test, use_log_price=False):
     """Логирование модели в MLflow."""
     with mlflow.start_run(run_name=f"{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
@@ -301,7 +431,7 @@ def log_model_to_mlflow(model, model_name, X_train, y_train, metrics_train, metr
         for key, value in quantiles_test.items():
             mlflow.log_metric(f"test_{key.lower()}", value)
         
-        if model_name == "lightgbm" and hasattr(model, '_X_train_prepared'):
+        if model_name in ("lightgbm", "xgboost") and hasattr(model, '_X_train_prepared'):
             X_for_signature = model._X_train_prepared
         else:
             X_for_signature = X_train
@@ -312,6 +442,9 @@ def log_model_to_mlflow(model, model_name, X_train, y_train, metrics_train, metr
             mlflow.catboost.log_model(model, "model", signature=signature)
         elif model_name == "lightgbm":
             mlflow.lightgbm.log_model(model, "model", signature=signature)
+        elif model_name == "xgboost":
+            import mlflow.xgboost as mlflow_xgb
+            mlflow_xgb.log_model(model, "model", signature=signature)
         
         print(f"Модель {model_name} сохранена в MLflow")
 
@@ -327,6 +460,11 @@ def save_model(model, model_name, output_dir):
         model.save_model(str(model_path))
     elif model_name == "lightgbm":
         model.booster_.save_model(str(model_path))
+    elif model_name == "xgboost":
+        path_json = output_dir / f"{model_name}_baseline.json"
+        model.save_model(str(path_json))
+        print(f"Модель сохранена: {path_json}")
+        return path_json
     
     print(f"Модель сохранена: {model_path}")
     return model_path
@@ -397,7 +535,7 @@ def train_baseline_models(
     
     print("\n" + "="*60)
     lgb_model, lgb_metrics_train, lgb_metrics_test, lgb_quantiles = train_lightgbm(
-        X_train, y_train, X_test, y_test, cat_cols_train, 
+        X_train, y_train, X_test, y_test, cat_cols_train,
         use_log_price=use_log_price, run_name="lightgbm_baseline"
     )
     log_model_to_mlflow(
@@ -407,12 +545,47 @@ def train_baseline_models(
     save_model(lgb_model, "lightgbm", models_dir)
     
     print("\n" + "="*60)
+    xgb_model, xgb_metrics_train, xgb_metrics_test, xgb_quantiles = train_xgboost(
+        X_train, y_train, X_test, y_test, cat_cols_train,
+        use_log_price=use_log_price, run_name="xgboost_baseline"
+    )
+    log_model_to_mlflow(
+        xgb_model, "xgboost", X_train, y_train,
+        xgb_metrics_train, xgb_metrics_test, xgb_quantiles, use_log_price=use_log_price
+    )
+    save_model(xgb_model, "xgboost", models_dir)
+    
+    print("\n" + "="*60)
+    print("Ансамбль (среднее предсказаний CatBoost + LightGBM + XGBoost), Test:")
+    X_lgb_x = _prepare_x_for_lgb_xgb(X_test, cat_cols_train)
+    X_xgb_x = _prepare_x_for_xgb_inference(X_test, xgb_model)
+    raw_cat = cat_model.predict(X_test)
+    raw_lgb = lgb_model.predict(X_lgb_x)
+    raw_xgb = xgb_model.predict(X_xgb_x)
+    if use_log_price:
+        p_cat = np.expm1(raw_cat)
+        p_lgb = np.expm1(raw_lgb)
+        p_xgb = np.expm1(raw_xgb)
+    else:
+        p_cat, p_lgb, p_xgb = raw_cat, raw_lgb, raw_xgb
+    p_ens = (p_cat + p_lgb + p_xgb) / 3.0
+    ens_mae = mean_absolute_error(y_test, p_ens)
+    ens_rmse = np.sqrt(mean_squared_error(y_test, p_ens))
+    ens_mape = calculate_mape(y_test, p_ens)
+    ens_q = calculate_quantiles(y_test, p_ens)
+    print(f"  MAE: {ens_mae:.2f}")
+    print(f"  RMSE: {ens_rmse:.2f}")
+    print(f"  MAPE: {ens_mape:.2f}%")
+    print(f"  P10/P50/P90 ошибки: {ens_q['P10']:.2f} / {ens_q['P50']:.2f} / {ens_q['P90']:.2f}")
+    
+    print("\n" + "="*60)
     print("Обучение завершено!")
     print(f"Модели сохранены в: {models_dir}")
     
-    return cat_model, lgb_model
+    return cat_model, lgb_model, xgb_model
 
 
 if __name__ == "__main__":
-    cat_model, lgb_model = train_baseline_models()
+    # log1p(цена) обычно улучшает обобщение на длинном хвосте цен
+    train_baseline_models(use_log_price=True)
 

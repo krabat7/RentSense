@@ -181,11 +181,17 @@ async def prediction(request: PredictReq):
                 price_p90=predictions.get('p90')
             )
 
-        # Иначе используем baseline модель
+        # Иначе используем baseline CatBoost (см. model_loader.BASELINE_LOG_TARGET — обучение на log1p)
         if baseline_model:
+            from .model_loader import BASELINE_LOG_TARGET
+
             pred_df = _align_df_to_model(df, baseline_model)
-            pred = baseline_model.predict(pred_df)
-            return PredictResponse(price=_clip_price(pred[0]))
+            raw = float(baseline_model.predict(pred_df)[0])
+            if BASELINE_LOG_TARGET:
+                price_rub = float(np.expm1(raw))
+            else:
+                price_rub = raw
+            return PredictResponse(price=_clip_price(price_rub))
 
         raise HTTPException(status_code=500, detail='Модели не загружены')
 
