@@ -112,9 +112,9 @@ def load_data_from_db(engine):
     LEFT JOIN developers d ON o.cian_id = d.cian_id
     """
     
-    print("Загрузка данных из БД...")
+    print("Загрузка данных из БД...", flush=True)
     df = pd.read_sql(query, engine)
-    print(f"Загружено строк: {len(df)}")
+    print(f"Загружено строк: {len(df)}", flush=True)
     return df
 
 
@@ -150,7 +150,7 @@ def add_price_actual(df):
         df['price_actual'] = df['price_from_changes'].fillna(df['price'])
         from_changes = df['price_from_changes'].notna().sum()
         from_offers = (df['price_actual'] == df['price']).sum()
-        print(f"Актуальная цена: из price_changes={from_changes}, из offers.price={from_offers}")
+        print(f"Актуальная цена: из price_changes={from_changes}, из offers.price={from_offers}", flush=True)
     else:
         df['price_actual'] = df['price']
     return df
@@ -165,16 +165,16 @@ def filter_data(df):
         df = df[df['category'] != 'dailyFlatRent'].copy()
         filtered_daily = before - len(df)
         if filtered_daily > 0:
-            print(f"Отфильтровано dailyFlatRent: {filtered_daily} записей")
+            print(f"Отфильтровано dailyFlatRent: {filtered_daily} записей", flush=True)
     
     if 'deal_type' in df.columns:
         before = len(df)
         df = df[df['deal_type'] == 'rent'].copy()
         filtered_sale = before - len(df)
         if filtered_sale > 0:
-            print(f"Отфильтровано deal_type='sale': {filtered_sale} записей")
+            print(f"Отфильтровано deal_type='sale': {filtered_sale} записей", flush=True)
     
-    print(f"После фильтрации: {len(df)} записей (было {initial_count})")
+    print(f"После фильтрации: {len(df)} записей (было {initial_count})", flush=True)
     return df
 
 
@@ -213,16 +213,17 @@ def remove_duplicates(df):
     duplicates_removed = initial_count - len(df_deduped)
     
     if duplicates_removed > 0:
-        print(f"Удалено дубликатов: {duplicates_removed} записей")
+        print(f"Удалено дубликатов: {duplicates_removed} записей", flush=True)
     
     df_deduped = df_deduped.drop(columns=['address_key', 'area_rounded', 'rooms_rounded', 'duplicate_key'], errors='ignore')
     
-    print(f"После дедупликации: {len(df_deduped)} записей (было {initial_count})")
+    print(f"После дедупликации: {len(df_deduped)} записей (было {initial_count})", flush=True)
     return df_deduped
 
 
 def clean_outliers(df):
     """Очистка выбросов"""
+    print("Очистка выбросов...", flush=True)
     initial_count = len(df)
     
     price_col = 'price_actual' if 'price_actual' in df.columns else 'price'
@@ -248,14 +249,14 @@ def clean_outliers(df):
     
     filtered = initial_count - len(df)
     if filtered > 0:
-        print(f"Отфильтровано выбросов: {filtered} записей")
-    print(f"После очистки выбросов: {len(df)} записей")
+        print(f"Отфильтровано выбросов: {filtered} записей", flush=True)
+    print(f"После очистки выбросов: {len(df)} записей", flush=True)
     return df
 
 
 def feature_engineering(df):
     """Feature Engineering"""
-    print("\nFeature Engineering...")
+    print("\nFeature Engineering...", flush=True)
     
     price_col = 'price_actual' if 'price_actual' in df.columns else 'price'
     
@@ -263,27 +264,27 @@ def feature_engineering(df):
     if 'total_area' in df.columns and price_col in df.columns:
         df['total_area'] = pd.to_numeric(df['total_area'], errors='coerce')
         df['price_per_sqm'] = df[price_col] / df['total_area']
-        print(f"Добавлено: price_per_sqm")
+        print(f"Добавлено: price_per_sqm", flush=True)
     
     if 'build_year' in df.columns:
         df['build_year'] = pd.to_numeric(df['build_year'], errors='coerce')
         df['house_age'] = 2025 - df['build_year']
         df['house_age'] = df['house_age'].clip(lower=0, upper=300)
-        print(f"Добавлено: house_age")
+        print(f"Добавлено: house_age", flush=True)
     
     # Применяем все фичи v2 (гео, travel, seasonal, building, clustering)
     df = add_features_v2(df, use_clustering=True, n_clusters=5)
     
     # Интеракции применяются после создания price_per_sqm
     df = add_interaction_features(df)
-    print("  Интеракции")
+    print("  Интеракции", flush=True)
     
     return df
 
 
 def fill_missing_values(df):
     """Заполнение пропусков"""
-    print("\nЗаполнение пропусков...")
+    print("\nЗаполнение пропусков...", flush=True)
     
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     fill_dict = {}
@@ -299,7 +300,7 @@ def fill_missing_values(df):
         if col not in ['description', 'coordinates'] and df[col].isna().sum() > 0:
             df[col] = df[col].fillna('unknown')
     
-    print("Пропуски заполнены")
+    print("Пропуски заполнены", flush=True)
     return df
 
 
@@ -319,9 +320,9 @@ def time_split(df, test_days=30):
     train_df = df_with_date[train_mask].copy()
     test_df = df_with_date[test_mask].copy()
     
-    print(f"\nВременное разделение (split_date={split_date.date()}):")
-    print(f"Train: {len(train_df)} записей ({len(train_df)/len(df_with_date)*100:.1f}%)")
-    print(f"Test: {len(test_df)} записей ({len(test_df)/len(df_with_date)*100:.1f}%)")
+    print(f"\nВременное разделение (split_date={split_date.date()}):", flush=True)
+    print(f"Train: {len(train_df)} записей ({len(train_df)/len(df_with_date)*100:.1f}%)", flush=True)
+    print(f"Test: {len(test_df)} записей ({len(test_df)/len(df_with_date)*100:.1f}%)", flush=True)
     
     return train_df, test_df
 
@@ -362,14 +363,14 @@ def prepare_data(output_dir=None):
     train_df.to_csv(train_path, index=False)
     test_df.to_csv(test_path, index=False)
     
-    print(f"\nДанные сохранены:")
-    print(f"Train: {train_path} ({len(train_df)} записей)")
-    print(f"Test: {test_path} ({len(test_df)} записей)")
+    print(f"\nДанные сохранены:", flush=True)
+    print(f"Train: {train_path} ({len(train_df)} записей)", flush=True)
+    print(f"Test: {test_path} ({len(test_df)} записей)", flush=True)
     
     return train_df, test_df
 
 
 if __name__ == "__main__":
     train_df, test_df = prepare_data()
-    print("\nПодготовка данных завершена!")
+    print("\nПодготовка данных завершена!", flush=True)
 
