@@ -63,7 +63,7 @@ def scan_new_offers(
 
     Args:
         hours: часов от текущего момента (если not since_midnight)
-        since_midnight: если True — только с 00:00 сегодня
+        since_midnight: если True, только с 00:00 сегодня
         filters: опционально district, rooms, area_min, area_max, price_min, price_max, metro, travel_time_max
         limit: макс. число объявлений
 

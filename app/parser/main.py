@@ -23,7 +23,7 @@ URL = 'https://www.cian.ru'
 def fetch_flat_page_html_http(flat_id: str, timeout: float = 20.0) -> str | None:
     """
     Одна страница объявления без Playwright (быстрый путь для API getparams / Streamlit).
-    Циан отдаёт offerData в HTML — тот же разбор, что и после браузера.
+    Циан отдает offerData в HTML, тот же разбор, что и после браузера.
     """
     import httpx
 
@@ -540,7 +540,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     elif status != 404:
                         proxyDict[proxy] = time.time() + (1 * 60)
                 elif status in (403, 429):
-                    # Без прокси 403/429 — один раз пробуем с прокси (для режима «по ссылке»)
+                    # Без прокси 403/429, один раз пробуем с прокси (для режима по ссылке)
                     if not use_proxy and respTry > 0:
                         logging.info(f'getResponse: Status {status} without proxy, retrying with proxy')
                         return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy=True)
@@ -579,7 +579,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             except:
                 pass
             
-            # Для одной страницы объявления (type=1) — быстрый путь: не вызываем inner_text('body') и не считаем карточки
+            # Для одной страницы объявления (type=1) быстрый путь: не вызываем inner_text('body') и не считаем карточки
             single_offer = (type == 1)
             has_content = False
             visible_text = ""
@@ -961,7 +961,7 @@ def fetch_flat_page_requests_proxies(
         mintime = min(non_empty.values())
         if mintime > time.time():
             wait = mintime - time.time()
-            # Интерактивный API: не ждать долгую разблокировку прокси (ocenomet: >=10s → skip)
+            # Интерактивный API: не ждать долгую разблокировку прокси (ocenomet: >=10s, skip)
             if wait < 10:
                 time.sleep(min(wait, 8.0))
             else:
@@ -1014,7 +1014,7 @@ def _html_has_usable_offer_data(html: str | None) -> bool:
 
 def race_fetch_flat_html_for_api(flat_id: str, wait_seconds: float = 20.0) -> str | None:
     """
-    Параллельно: httpx, curl_cffi, requests+прокси — кто первым принёс валидный HTML с offerData.
+    Параллельно: httpx, curl_cffi, requests+прокси, кто первым принес валидный HTML с offerData.
     Укладывается в ~wait_seconds вместо суммы трёх последовательных таймаутов.
     """
     fid = str(flat_id)
@@ -1133,7 +1133,7 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
             logging.info(f"Apart page {page} skipped after {retry_count} failed attempts")
             continue
 
-        # Режим «по ссылке» (Streamlit): сначала быстрый HTTP без браузера
+        # Режим по ссылке (Streamlit): сначала быстрый HTTP без браузера
         if not dbinsert:
             html_fast = race_fetch_flat_html_for_api(str(page), wait_seconds=22.0)
             if html_fast:
@@ -1144,7 +1144,7 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
                     return data_fast
             logging.info("Apart page %s: fast HTTP miss, fallback to getResponse", page)
 
-        # Интерактив: без прокси быстрее; при провале — с прокси как у парсера
+        # Интерактив: без прокси быстрее; при провале с прокси как у парсера
         use_px = bool(dbinsert)
         response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2, use_proxy=use_px)
         if not dbinsert and (not response or response == "CAPTCHA"):
@@ -1223,7 +1223,7 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
     
     logging.info(f"Apart pages {pagesList[:5]}{'...' if len(pagesList) > 5 else ''} processed. Added: {pages_cnt}, Existing: {existing_count}, Filtered: {filtered_count}, Skipped: {skipped_count}")
 
-    # Один id + getparams/Streamlit: не возвращать 'FILTERED'/'OK' — иначе API думает что это dict
+    # Один id + getparams/Streamlit: не возвращать 'FILTERED'/'OK', иначе API думает что это dict
     if len(pagesList) == 1 and not dbinsert:
         return None
 

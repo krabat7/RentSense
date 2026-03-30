@@ -13,7 +13,7 @@ from .model_loader import load_baseline_model, load_quantile_models
 from .models import Params, PredictReq, PredictResponse
 from .preprocess import preparams
 from .preprocess_inference import fill_missing_for_inference, prepare_features_for_prediction
-from .theards import to_thread
+from .threads import to_thread
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ async def getparams(url: str):
 
 
 def _ensure_cat_string(ser: pd.Series) -> np.ndarray:
-    """Категориальные признаки CatBoost: только str или int. Float/NaN → строка 'unknown'."""
+    """Категориальные признаки CatBoost: только str или int. Float/NaN в строку 'unknown'."""
     def to_cat(x):
         if pd.isna(x) or isinstance(x, (float, np.floating)):
             return "unknown"
@@ -107,8 +107,8 @@ def _ensure_cat_string(ser: pd.Series) -> np.ndarray:
 
 
 def _align_df_to_model(df: pd.DataFrame, model) -> pd.DataFrame:
-    """Приводит DataFrame к признакам модели: порядок колонок, недостающие — 0.
-    Числовые: строки/unknown → float 0. Категориальные: float/NaN → строка 'unknown'."""
+    """Приводит DataFrame к признакам модели: порядок колонок, недостающие - 0.
+    Числовые: строки/unknown в float 0. Категориальные: float/NaN в строку 'unknown'."""
     try:
         names = getattr(model, 'feature_names_', None) or getattr(model, 'feature_names', lambda: None)()
         if not names:
@@ -181,7 +181,7 @@ async def prediction(request: PredictReq):
                 price_p90=predictions.get('p90')
             )
 
-        # Иначе используем baseline CatBoost (см. model_loader.BASELINE_LOG_TARGET — обучение на log1p)
+        # Иначе используем baseline CatBoost (см. model_loader.BASELINE_LOG_TARGET, обучение на log1p)
         if baseline_model:
             from .model_loader import BASELINE_LOG_TARGET
 

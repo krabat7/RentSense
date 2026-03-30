@@ -38,7 +38,7 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or env.get('TELEGRAM_BOT_TO
 ALERT_HOUR_START = 9
 ALERT_HOUR_END = 23
 
-# Только объявления за последние N часов — меньше шанс, что уже сняты с публикации
+# Только объявления за последние N часов, меньше шанс, что уже сняты с публикации
 MAX_OFFER_AGE_HOURS = 12
 
 NO_OFFERS_MESSAGE = (
@@ -56,7 +56,7 @@ async def send_alerts():
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
     try:
-        # Объявления за последние MAX_OFFER_AGE_HOURS — свежие, реже сняты с публикации
+        # Объявления за последние MAX_OFFER_AGE_HOURS свежие, реже сняты с публикации
         offers = scan_new_offers(hours=MAX_OFFER_AGE_HOURS, since_midnight=False, limit=200)
         if not offers:
             logger.info("Нет объявлений за последние %s ч", MAX_OFFER_AGE_HOURS)

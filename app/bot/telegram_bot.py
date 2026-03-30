@@ -2,7 +2,7 @@
 Telegram бот: уведомления о выгодных объявлениях по фильтрам.
 
 Команды: /start, /help, /status, /on, /off, /filters, /set
-Планировщик: каждый час с 9 до 23 — алерты; в 00:00 — сброс счётчиков.
+Планировщик: каждый час с 9 до 23, алерты; в 00:00 сброс счетчиков.
 """
 import asyncio
 import logging
@@ -70,7 +70,7 @@ BUTTON_BACK = "Назад"
 
 
 def build_main_keyboard(is_active: bool) -> ReplyKeyboardMarkup:
-    """Одна кнопка: при включённых уведомлениях — «Выкл», при выключенных — «Вкл»."""
+    """Одна кнопка: при включенных уведомлениях ВЫКЛ, при выключенных ВКЛ."""
     toggle = BUTTON_OFF if is_active else BUTTON_ON
     return ReplyKeyboardMarkup(
         [
@@ -103,7 +103,7 @@ def _clear_filter_wizard(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _safe_query_edit(query, text: str, reply_markup=None) -> None:
-    """Telegram возвращает 400, если текст и клавиатура не изменились — не считаем это ошибкой."""
+    """Telegram возвращает 400, если текст и клавиатура не изменились, не считаем это ошибкой."""
     try:
         await query.edit_message_text(text, reply_markup=reply_markup)
     except BadRequest as e:
@@ -114,7 +114,7 @@ async def _safe_query_edit(query, text: str, reply_markup=None) -> None:
 
 
 def _parse_cfg_callback(data: str) -> tuple[str | None, list[str]]:
-    """Разбор cfg:… без ломания ключей вроде travel_time_max."""
+    """Разбор cfg без ломания ключей вроде travel_time_max."""
     if not data.startswith("cfg:"):
         return None, []
     tail = data[4:]
@@ -131,7 +131,7 @@ async def _update_prefs_in_thread(user_id: int, updates: dict) -> None:
 
 
 def _sync_status_payload(user_id: int, chat_id: int) -> tuple[str, bool]:
-    """Текст статуса + is_active для клавиатуры — один заход в БД по сути."""
+    """Текст статуса + is_active для клавиатуры, один запрос в БД."""
     user = _get_or_create_user(user_id, chat_id)
     prefs = get_user_preferences(user_id)
     status_text = "✅ Уведомления включены" if user.is_active else "❌ Уведомления выключены"
@@ -165,7 +165,7 @@ def _sync_filters_and_active(user_id: int) -> tuple[dict, bool]:
 
 
 def _normalize_menu_text(s: str) -> str:
-    """Невидимые символы и полноширинное двоеточие — для совпадения с текстом кнопок Telegram."""
+    """Невидимые символы и полноширинное двоеточие для совпадения с текстом кнопок Telegram."""
     t = unicodedata.normalize("NFC", (s or "").strip())
     for ch in ("\u200b", "\u200c", "\u200d", "\ufeff", "\u2060"):
         t = t.replace(ch, "")
@@ -174,7 +174,7 @@ def _normalize_menu_text(s: str) -> str:
 
 
 MULTI_FILTER_KEYS = {"metro", "district", "rooms"}
-# rooms — смешанный список int и "studio" (flat_type в БД); парсится отдельно
+# rooms - смешанный список int и "studio" (flat_type в БД); парсится отдельно
 NUMERIC_KEYS = {"area_min", "area_max", "price_min", "price_max", "travel_time_max"}
 ROOM_STUDIO = "studio"
 EDITABLE_FILTER_KEYS = [

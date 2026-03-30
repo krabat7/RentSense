@@ -18,7 +18,7 @@ def prepare_features_for_prediction(data: Dict[str, Any]) -> pd.DataFrame:
     df = pd.DataFrame([data])
     
     # Базовые фичи (нужны для других фичей). При обучении использовался price_per_sqm (утечка из target).
-    # На inference цены нет — подставляем типичную по Москве (руб/м²), иначе модель получает 0 и даёт мусор.
+    # На inference цены нет, подставляем типичную по Москве (руб/м2), иначе модель получает 0 и дает шум.
     DEFAULT_PRICE_PER_SQM = 600.0
     if 'total_area' in df.columns and 'price' in df.columns and pd.notna(df['price'].iloc[0]):
         df['total_area'] = pd.to_numeric(df['total_area'], errors='coerce')

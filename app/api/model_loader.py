@@ -8,7 +8,7 @@ from catboost import CatBoostRegressor
 logger = logging.getLogger(__name__)
 
 # Должно совпадать с train_baseline.train_baseline_models(use_log_price=...).
-# Если модель обучали на log1p(цена), выход CatBoost — в лог-шкале, в API нужен expm1.
+# Если модель обучали на log1p(цена), выход CatBoost в лог шкале, в API нужен expm1.
 # Старую модель без лога: RENTSENSE_BASELINE_LOG_TARGET=false
 BASELINE_LOG_TARGET = os.environ.get("RENTSENSE_BASELINE_LOG_TARGET", "true").strip().lower() in (
     "1",

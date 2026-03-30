@@ -150,7 +150,7 @@ def _geocode_yandex(address: str, api_key: str) -> Tuple[Optional[Tuple[float, f
 
 
 def geocode_address(address: str) -> Tuple[Optional[Tuple[float, float]], Optional[str]]:
-    """Геокодинг: при заданном YANDEX_GEOCODER_API_KEY — сначала Яндекс, иначе Nominatim.
+    """Геокодинг: при заданном YANDEX_GEOCODER_API_KEY сначала Яндекс, иначе Nominatim.
     Возвращает (координаты или None, сообщение об ошибке при неудаче)."""
     if not address or not address.strip():
         return None, "Пустой адрес"
@@ -234,7 +234,7 @@ def validate_for_predict(data: Dict[str, Any]) -> List[str]:
     has_district = data.get("district") and str(data.get("district")).strip()
     has_metro = data.get("metro") and str(data.get("metro")).strip()
     has_travel = data.get("travel_time") is not None
-    # С Циана часто есть метро + время пешком, но без названия района — это достаточно для геоконтекста
+    # С Циана часто есть метро + время пешком, но без названия района, этого достаточно для геоконтекста
     if not has_coords and not ((has_district or has_metro) and has_travel):
         missing.append("координаты или (район/метро и время до метро)")
     return missing
@@ -485,7 +485,7 @@ if mode == "Ввести параметры":
                     "travel_time": int(travel_time),
                     "coordinates": {"lat": lat, "lng": lng},
                 }
-                # Подставляем цену по рынку района: медиана руб/м² по похожим объявлениям — модель даёт адекватный прогноз
+                # Подставляем цену по рынку района: медиана руб/м2 по похожим объявлениям, модель дает адекватный прогноз
                 search_filters = {"limit": 80}
                 if total_area and total_area > 0:
                     search_filters["area_min"] = max(0, total_area - 15)

@@ -126,14 +126,14 @@ def prepare_features(
             low_corr_cols = [col for col, corr in correlations if abs(corr) < min_correlation]
             feature_cols = [col for col in feature_cols if col not in low_corr_cols]
             print(f"\nПосле фильтрации по корреляции (<{min_correlation}): {len(feature_cols)} признаков")
-            # Опционально: оставить только топ-N числовых по корреляции (категориальные — все)
+            # Опционально: оставить только топ-N числовых по корреляции (категориальные - все)
             if max_numeric_features is not None:
                 corr_dict = dict(correlations)
                 numeric_ordered = [c for c, _ in correlations if c in feature_cols]
                 categorical_in_features = [c for c in feature_cols if c not in corr_dict]
                 top_numeric = numeric_ordered[:max_numeric_features]
                 feature_cols = top_numeric + categorical_in_features
-                print(f"Оставлен топ-{max_numeric_features} числовых по корреляции + {len(categorical_in_features)} категориальных → всего {len(feature_cols)} признаков")
+                print(f"Оставлен топ-{max_numeric_features} числовых по корреляции + {len(categorical_in_features)} категориальных, всего {len(feature_cols)} признаков")
     
     X = df[feature_cols].copy()
     y = df[target_col].copy()
@@ -326,7 +326,7 @@ def train_lightgbm(X_train, y_train, X_test, y_test, categorical_cols,
 
 def train_xgboost(X_train, y_train, X_test, y_test, categorical_cols,
                   use_log_price=False, run_name="xgboost_baseline"):
-    """Обучение XGBoost (hist). Категории — OrdinalEncoder (train/test согласованы, unknown → -1)."""
+    """Обучение XGBoost (hist). Категории - OrdinalEncoder (train/test согласованы, unknown в -1)."""
     print("\nОбучение XGBoost...")
     if use_log_price:
         print("  Используется логарифмирование цены")

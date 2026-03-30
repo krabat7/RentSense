@@ -26,7 +26,7 @@ def pagecheck(pageJS: dict):
     if offers['cian_id'] is None or offers['price'] is None:
         return
 
-    # Раньше отсекали всё не-Москву — для Streamlit/getparams ссылки из других регионов выглядели как «снято»
+    # Раньше отсекали все не Москву, для Streamlit/getparams ссылки из других регионов выглядели как снято
     obl_id = page.get('trackingData', {}).get('oblId')
     if obl_id is not None and obl_id != 1:
         logging.info(

@@ -1,84 +1,77 @@
 # RentSense
 
-Сервис предсказания стоимости аренды недвижимости в Москве с использованием методов машинного обучения.
+Сервис оценки стоимости аренды квартир в Москве. Проект включает API, парсер, UI, Telegram бот и ML пайплайн с ретрейном.
 
-## Структура проекта
+## Сервисы и архитектура
 
+- `backend` - FastAPI API (`/health`, `/api/predict`, `/api/search`).
+- `streamlit` - web UI для ввода параметров и просмотра результата.
+- `telegram_bot` - бот с подпиской и фильтрами.
+- `parser` - фоновый сбор объявлений в БД.
+- `mysql` - основная база.
+- `mlflow` - UI и хранилище экспериментов.
+- `adminer` - админка БД.
+
+## Структура репозитория
+
+- `app/api` - API и инференс.
+- `app/parser` - парсер и запись в БД.
+- `app/bot` - логика бота и уведомлений.
+- `app/ui` - Streamlit интерфейс.
+- `ml` - подготовка данных, фичи, обучение.
+- `scripts` - служебные скрипты, включая ретрейн.
+- `tests` - unit и smoke тесты.
+
+## Быстрый запуск
+
+1. Создайте `.env` в корне (минимум БД и токен бота).
+2. Поднимите сервисы:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
 ```
-RentSense/
-├── app/                    # Основное приложение
-│   ├── api/               # FastAPI endpoints
-│   ├── parser/            # Парсер ЦИАН
-│   └── scheduler/         # Планировщик задач
-├── ml/                    # Машинное обучение
-│   ├── eda/              # EDA ноутбуки
-│   ├── features/         # Генерация фичей
-│   ├── models/           # Обученные модели
-│   ├── prepare_data.py   # Подготовка данных
-│   └── train_baseline.py # Обучение моделей
-├── data/                  # Данные
-│   ├── raw/              # Сырые данные
-│   └── processed/        # Обработанные данные
-├── tests/                 # Тесты
-└── .github/workflows/     # CI/CD
+
+3. Проверьте:
+- API: `http://localhost:8000/health`
+- UI: `http://localhost:8501`
+- MLflow: `http://localhost:5000`
+- Adminer: `http://localhost:8080`
+
+## ML пайплайн
+
+Ретрейн выполняется скриптом:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python scripts/monthly_model_retrain.py
 ```
 
-## Требования
+Что делает скрипт:
+- собирает train/test из БД (`ml/prepare_data.py`);
+- обучает baseline модели (`ml/train_baseline.py`);
+- пишет артефакты в `ml/models`;
+- логирует прогоны в MLflow (`mlruns`).
 
-- Python 3.10+
-- Docker и Docker Compose
-- MySQL 8.0
+## Тесты и CI
 
-## Установка
+Локальный прогон:
 
-1. Клонируйте репозиторий
-2. Создайте файл `.env` с настройками БД:
-   ```
-   DB_TYPE=mysql+pymysql
-   DB_LOGIN=rentsense
-   DB_PASS=rentsense
-   DB_IP=89.110.92.128
-   DB_PORT=3306
-   DB_NAME=rentsense
-   MLFLOW_TRACKING_URI=sqlite:///mlflow.db
-   ```
-3. Запустите через Docker Compose:
-   ```bash
-   docker-compose -f docker-compose.prod.yml up -d
-   ```
+```bash
+python -m pytest tests/ -v --tb=short
+```
 
-## Использование
+CI в GitHub Actions (`.github/workflows/ci.yml`) запускает:
+- `black`
+- `flake8`
+- `pytest`
 
-- API доступен на `http://localhost:8000`
-- Health check: `http://localhost:8000/health`
-- Парсер запускается автоматически через cron
+## Основные таблицы БД
 
-## ML Pipeline
-
-1. Подготовка данных:
-   ```bash
-   python ml/prepare_data.py
-   ```
-
-2. Обучение моделей:
-   ```bash
-   python ml/train_baseline.py
-   ```
-
-## База данных
-
-Основные таблицы:
-- `offers` - объявления
-- `addresses` - адреса и геоданные
-- `photos` - фотографии
-- `realty_inside`, `realty_outside`, `realty_details` - характеристики недвижимости
-- `offers_details` - детали объявлений
-- `developers` - застройщики
-
-## CI/CD
-
-Проект использует GitHub Actions для автоматической проверки кода:
-- black - форматирование кода
-- flake8 - линтер
-- pytest - тесты
+- `offers`
+- `addresses`
+- `photos`
+- `realty_inside`
+- `realty_outside`
+- `realty_details`
+- `offers_details`
+- `developers`
 
