@@ -227,24 +227,26 @@ def clean_outliers(df):
     initial_count = len(df)
     
     price_col = 'price_actual' if 'price_actual' in df.columns else 'price'
+    print("  цена → numeric", flush=True)
     df[price_col] = pd.to_numeric(df[price_col], errors='coerce')
     
-    df = df[
-        (df[price_col] >= 1000) & 
-        (df[price_col] <= 10_000_000)
+    print("  фильтр по цене", flush=True)
+    df = df.loc[
+        (df[price_col] >= 1000) & (df[price_col] <= 10_000_000)
     ].copy()
     
     if 'total_area' in df.columns:
+        print("  площадь → numeric", flush=True)
         df['total_area'] = pd.to_numeric(df['total_area'], errors='coerce')
-        df = df[
-            (df['total_area'] >= 10) & 
-            (df['total_area'] <= 500)
+        print("  фильтр по площади", flush=True)
+        df = df.loc[
+            (df['total_area'] >= 10) & (df['total_area'] <= 500)
         ].copy()
         
-        price_per_sqm = df[price_col] / df['total_area']
-        df = df[
-            (price_per_sqm >= 100) & 
-            (price_per_sqm <= 100_000)
+        print("  фильтр цена/м²", flush=True)
+        price_per_sqm = df[price_col] / df['total_area'].replace(0, np.nan)
+        df = df.loc[
+            (price_per_sqm >= 100) & (price_per_sqm <= 100_000)
         ].copy()
     
     filtered = initial_count - len(df)
