@@ -5,11 +5,12 @@
 Раз в месяц для долгосрочной аренды - нормальный компромисс: рынок
 медленнее дневных колебаний, нагрузка на сервер умеренная.
 
-Пример cron (1-е число, 03:00, из корня репозитория на Linux-сервере):
+Пример cron (1-е число, 03:00), из каталога с `docker-compose.prod.yml` на сервере
+(путь замените на свой, ниже — типичный вариант для клона в `/root/RentSense`):
 
-    0 3 1 * * cd /path/to/RentSense && .venv/bin/python scripts/monthly_model_retrain.py >> logs/monthly_retrain.log 2>&1
+    0 3 1 * * cd /root/RentSense && docker compose -f docker-compose.prod.yml exec -T backend python scripts/monthly_model_retrain.py >> /root/RentSense/logs/monthly_retrain.log 2>&1
 
-Нужен .env с доступом к БД (как у ml/prepare_data). После прогона перезапусти API,
+Нужен `.env` у compose с доступом к БД (как у `ml/prepare_data`). После прогона перезапусти API,
 чтобы подхватить новый ml/models/catboost_baseline.model (или используй volume).
 """
 from __future__ import annotations

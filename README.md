@@ -31,11 +31,13 @@
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-3. Проверьте:
-- API: `http://localhost:8000/health`
-- UI: `http://localhost:8501`
-- MLflow: `http://localhost:5000`
-- Adminer: `http://localhost:8080`
+3. Проверьте (развёрнутый сервер `89.110.92.128`):
+- API: `http://89.110.92.128:8000/health`
+- UI: `http://89.110.92.128:8501`
+- MLflow: `http://89.110.92.128:5000`
+- Adminer: `http://89.110.92.128:8080`
+
+На той же машине, где запущен compose, можно открыть те же сервисы с хоста `localhost` и теми же номерами портов.
 
 ## ML пайплайн
 

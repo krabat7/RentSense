@@ -28,5 +28,5 @@
 
 - Основной запуск: `docker compose -f docker-compose.prod.yml up -d`
 - Ретрейн: `docker compose -f docker-compose.prod.yml exec backend python scripts/monthly_model_retrain.py`
-- MLflow UI: `http://<server-ip>:5000`
+- MLflow UI: `http://89.110.92.128:5000`
 
