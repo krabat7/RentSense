@@ -5,6 +5,7 @@
 feature engineering, заполнение пропусков, временное разделение train/test.
 """
 
+import os
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -17,6 +18,17 @@ from dotenv import dotenv_values
 sys.path.append(str(Path(__file__).parent))
 from features import add_features_v2
 from features.interaction_features import add_interaction_features
+
+
+def _db_setting(env_file: dict, key: str, default: str) -> str:
+    """Сначала переменные окружения (Docker Compose), затем .env, затем default."""
+    v = os.environ.get(key)
+    if v is not None and str(v).strip() != "":
+        return str(v).strip()
+    v = env_file.get(key) if env_file else None
+    if v is not None and str(v).strip() != "":
+        return str(v).strip()
+    return default
 
 
 def load_data_from_db(engine):
@@ -322,14 +334,14 @@ def prepare_data(output_dir=None):
     output_dir.mkdir(parents=True, exist_ok=True)
     
     env_path = Path(__file__).parent.parent / '.env'
-    env = dotenv_values(env_path)
-    
-    DBTYPE = env.get('DB_TYPE') or 'mysql+pymysql'
-    LOGIN = env.get('DB_LOGIN') or 'root'
-    PASS = env.get('DB_PASS') or 'rootpassword'
-    IP = env.get('DB_IP') or '89.110.92.128'
-    PORT = env.get('DB_PORT') or '3306'
-    DBNAME = env.get('DB_NAME') or 'rentsense'
+    env = dotenv_values(env_path) or {}
+
+    DBTYPE = _db_setting(env, "DB_TYPE", "mysql+pymysql")
+    LOGIN = _db_setting(env, "DB_LOGIN", "root")
+    PASS = _db_setting(env, "DB_PASS", "rootpassword")
+    IP = _db_setting(env, "DB_IP", "89.110.92.128")
+    PORT = _db_setting(env, "DB_PORT", "3306")
+    DBNAME = _db_setting(env, "DB_NAME", "rentsense")
     
     DATABASE_URL = f'{DBTYPE}://{LOGIN}:{PASS}@{IP}:{PORT}/{DBNAME}?charset=utf8mb4'
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
