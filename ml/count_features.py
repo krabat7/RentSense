@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-# Подключаем ml
+# Корень проекта в sys.path для импорта ml.*
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ml.train_baseline import prepare_features

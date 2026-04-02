@@ -1,9 +1,4 @@
-"""
-Скрипт обучения квантильных моделей для предсказания цены аренды.
-
-Обучение CatBoost моделей с loss_function='Quantile' для квантилей [0.1, 0.5, 0.9],
-что позволяет получить вилку цен (P10, P50, P90).
-"""
+"""Обучение трех CatBoost Quantile-моделей (alpha=0.1, 0.5, 0.9) и логирование вилки в MLflow."""
 
 import pandas as pd
 import numpy as np
@@ -31,21 +26,17 @@ def calculate_quantile_metrics(y_true, y_pred_p10, y_pred_p50, y_pred_p90):
     """Вычисление метрик для квантильных предсказаний."""
     metrics = {}
     
-    # Метрики для медианы (P50)
     metrics['P50_MAE'] = mean_absolute_error(y_true, y_pred_p50)
     metrics['P50_RMSE'] = np.sqrt(mean_squared_error(y_true, y_pred_p50))
     metrics['P50_MAPE'] = calculate_mape(y_true, y_pred_p50)
     
-    # Покрытие вилки (сколько реальных значений попадает в интервал P10-P90)
     coverage = np.mean((y_true >= y_pred_p10) & (y_true <= y_pred_p90))
     metrics['coverage_p10_p90'] = coverage
     
-    # Средняя ширина вилки
     width = np.mean(y_pred_p90 - y_pred_p10)
     metrics['mean_interval_width'] = width
     metrics['mean_interval_width_pct'] = (width / np.mean(y_true)) * 100 if np.mean(y_true) > 0 else 0
     
-    # Квантильные ошибки
     errors_p10 = np.abs(y_true - y_pred_p10)
     errors_p50 = np.abs(y_true - y_pred_p50)
     errors_p90 = np.abs(y_true - y_pred_p90)
@@ -57,7 +48,7 @@ def calculate_quantile_metrics(y_true, y_pred_p10, y_pred_p50, y_pred_p90):
 
 
 def prepare_features_for_quantile(df):
-    """Подготовка признаков (используем ту же логику, что и в train_baseline)."""
+    """Матрица признаков через train_baseline.prepare_features."""
     from train_baseline import prepare_features
     return prepare_features(df, use_correlation_filter=True, min_correlation=0.01)
 
@@ -113,22 +104,18 @@ def main():
     print("Обучение квантильных моделей")
     print("=" * 60)
     
-    # Инициализация MLflow
     init_mlflow()
     
-    # Загрузка и подготовка данных
     print("\nЗагрузка данных...")
     train_df, test_df = prepare_data()
     
     print(f"Train: {len(train_df)} записей")
     print(f"Test: {len(test_df)} записей")
     
-    # Подготовка признаков
     X_train, y_train, categorical_cols, numeric_cols, feature_cols = prepare_features_for_quantile(train_df)
     X_test, y_test, _, _, _ = prepare_features_for_quantile(test_df)
     
-    # Обучение моделей для трех квантилей
-    quantiles = [0.1, 0.5, 0.9]  # P10, P50, P90
+    quantiles = [0.1, 0.5, 0.9]
     models = {}
     predictions = {}
     all_metrics = {}
@@ -153,7 +140,6 @@ def main():
                 'test': metrics_test
             }
             
-            # Логирование в MLflow
             mlflow.log_metrics({
                 f"{quantile_name}_train_MAE": metrics_train['MAE'],
                 f"{quantile_name}_train_RMSE": metrics_train['RMSE'],
@@ -163,13 +149,11 @@ def main():
                 f"{quantile_name}_test_MAPE": metrics_test['MAPE'],
             })
             
-            # Сохранение модели
             model_path = f"ml/models/catboost_quantile_{quantile_name}_v2.model"
             model.save_model(model_path)
             mlflow.log_artifact(model_path, "models")
             print(f"Модель сохранена: {model_path}")
         
-        # Вычисление метрик для вилки
         quantile_metrics = calculate_quantile_metrics(
             y_test.values,
             predictions['P10'],
@@ -185,7 +169,6 @@ def main():
         for key, value in quantile_metrics.items():
             print(f"  {key}: {value:.2f}")
         
-        # Логирование параметров
         mlflow.log_params({
             'quantiles': str(quantiles),
             'n_features': len(feature_cols),

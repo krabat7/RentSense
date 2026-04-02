@@ -1,7 +1,7 @@
 """
 Дополнительные метрики для оценки моделей предсказания цены аренды.
 
-R², Median Absolute Error, Symmetric MAPE, метрики по ценовым сегментам.
+R2, Median Absolute Error, Symmetric MAPE, метрики по ценовым сегментам.
 """
 
 import numpy as np
@@ -10,7 +10,7 @@ from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
 
 def calculate_r2(y_true, y_pred):
-    """Вычисление R² (коэффициент детерминации)."""
+    """Вычисление R2 (коэффициент детерминации)."""
     return r2_score(y_true, y_pred)
 
 
@@ -118,7 +118,7 @@ def print_metrics(metrics, title="Метрики"):
     print(f"  MAE: {metrics['MAE']:.2f}")
     print(f"  RMSE: {metrics['RMSE']:.2f}")
     print(f"  MAPE: {metrics['MAPE']:.2f}%")
-    print(f"  R²: {metrics['R2']:.4f}")
+    print(f"  R2: {metrics['R2']:.4f}")
     print(f"  Median AE: {metrics['Median_AE']:.2f}")
     print(f"  Symmetric MAPE: {metrics['Symmetric_MAPE']:.2f}%")
     
@@ -130,6 +130,6 @@ def print_metrics(metrics, title="Метрики"):
                 print(f"    MAE: {seg_metrics['mae']:.2f}")
                 print(f"    RMSE: {seg_metrics['rmse']:.2f}")
                 print(f"    MAPE: {seg_metrics['mape']:.2f}%")
-                print(f"    R²: {seg_metrics['r2']:.4f}")
+                print(f"    R2: {seg_metrics['r2']:.4f}")
     
     print(f"{'='*60}\n")

@@ -1,8 +1,4 @@
-"""
-Streamlit UI для предсказания цены аренды недвижимости.
-
-Два режима: ввод параметров вручную и оценка по ссылке на объявление Циан.
-"""
+"""Веб-интерфейс: ручной ввод признаков или разбор объявления Циан по URL."""
 import os
 import re
 import logging
@@ -17,10 +13,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 from typing import Dict, Any, Optional, List, Tuple
 
-# Конфигурация: в Docker задать API_BASE_URL=http://backend:8000/api
+# Базовый URL API (в Docker обычно http://backend:8000/api).
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
 
-# Обязательные признаки для режима «по ссылке» (названия для сообщения пользователю)
+# Режим "по ссылке": поле API, текст подсказки при ошибке валидации.
 REQUIRED_FIELDS = [
     ("total_area", "общая площадь"),
     ("rooms_count", "количество комнат"),
@@ -30,10 +26,10 @@ REQUIRED_FIELDS = [
     ("repair_type", "тип ремонта"),
     ("material_type", "тип дома"),
 ]
-# Координаты или (район + время до метро)
+# Гео-допуск: координаты или (район/метро + travel_time).
 REQUIRED_GEO = ["coordinates", "district", "travel_time"]
 
-# Русские подписи для выпадающих списков
+# Человекочитаемая метка и значение для API (ремонт, материал стен).
 REPAIR_OPTIONS = [
     ("Евро", "euro"),
     ("Дизайнерский", "design"),
@@ -47,21 +43,21 @@ MATERIAL_OPTIONS = [
     ("Блочный", "block"),
     ("Другой", "none"),
 ]
-# Комнаты: отдельно студия (flat_type=studio, rooms_count=1), затем 1–9 комнат (flat_type=rooms)
+# Студия: flat_type=studio, rooms_count=1. Иначе flat_type=rooms и число комнат.
 ROOM_OPTIONS = [("Студия", 1, "studio")] + [(str(i), i, "rooms") for i in range(1, 10)]
 REPAIR_LABELS = {v: k for k, v in REPAIR_OPTIONS}
 MATERIAL_LABELS = {v: k for k, v in MATERIAL_OPTIONS}
 
-# Центр Москвы (запасной вариант при ошибке геокодинга)
+# Fallback координат при сбое геокодера.
 CENTER_MOSCOW = (55.7558, 37.6173)
 
 st.set_page_config(
     page_title="RentSense - Предсказание цены аренды",
-    page_icon="🏠",
+    page_icon="R",
     layout="wide"
 )
 
-st.title("🏠 RentSense - Предсказание цены аренды")
+st.title("RentSense - Предсказание цены аренды")
 st.caption("По Москве.")
 st.markdown("Оценка рыночной стоимости аренды: введите параметры или ссылку на объявление Циан.")
 
@@ -119,7 +115,7 @@ def _geocode_nominatim(address: str) -> Tuple[Optional[Tuple[float, float]], Opt
         from geopy.geocoders import Nominatim
         from geopy.extra.rate_limiter import RateLimiter
         geolocator = Nominatim(
-            user_agent="RentSense/1.0 (rentsense-app; Moscow rent price prediction)",
+            user_agent="RentSense/1.0 (rentsense-app, Moscow rent price prediction)",
             timeout=10,
         )
         geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1.1)
@@ -234,7 +230,7 @@ def validate_for_predict(data: Dict[str, Any]) -> List[str]:
     has_district = data.get("district") and str(data.get("district")).strip()
     has_metro = data.get("metro") and str(data.get("metro")).strip()
     has_travel = data.get("travel_time") is not None
-    # С Циана часто есть метро + время пешком, но без названия района, этого достаточно для геоконтекста
+    # Достаточно метро + travel_time без района (как в выгрузке Циан).
     if not has_coords and not ((has_district or has_metro) and has_travel):
         missing.append("координаты или (район/метро и время до метро)")
     return missing
@@ -243,7 +239,7 @@ def validate_for_predict(data: Dict[str, Any]) -> List[str]:
 def _format_param(value: Any, key: str) -> str:
     """Форматирование значения параметра для отображения."""
     if value is None or (isinstance(value, str) and not value.strip()):
-        return "—"
+        return "-"
     if key == "repair_type":
         return REPAIR_LABELS.get(value, str(value))
     if key == "material_type":
@@ -251,12 +247,12 @@ def _format_param(value: Any, key: str) -> str:
     if key == "flat_type":
         return "Студия" if value == "studio" else str(value)
     if isinstance(value, float) and key == "total_area":
-        return f"{value:.1f} м²"
+        return f"{value:.1f} м2"
     return str(value)
 
 
 def _median_price_per_sqm_from_search(filters: Dict[str, Any]) -> Optional[float]:
-    """Медианная цена за м² по похожим объявлениям из /search (для подстановки в модель по району)."""
+    """Медиана руб/м2 по выборке /search, синтетическое поле price для ручного ввода."""
     resp, _ = call_search_api(filters)
     if not resp:
         return None
@@ -285,7 +281,7 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any], from_link: bool 
             except (TypeError, ValueError):
                 pass
 
-    # Только в режиме «по ссылке»: сравнение с заявленной ценой объявления
+    # По ссылке: сравнение прогноза с price из объявления.
     if from_link and real_price is not None and real_price > 0:
         diff_rub = price - real_price
         diff_pct = (diff_rub / real_price * 100) if real_price else 0
@@ -298,23 +294,23 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any], from_link: bool 
             st.metric("Предсказанная стоимость", f"{price:,.0f} руб".replace(",", " "))
         with c3:
             if is_good:
-                st.metric("Выгодно", f"+{diff_rub:,.0f} руб".replace(",", " "), f"~{diff_pct:+.0f}%")
+                st.metric("Выгодно", f"+{diff_rub:,.0f} руб".replace(",", " "), f"около {diff_pct:+.0f}%")
             else:
-                st.metric("Не выгодно", f"{diff_rub:,.0f} руб".replace(",", " "), f"~{diff_pct:.0f}%")
+                st.metric("Не выгодно", f"{diff_rub:,.0f} руб".replace(",", " "), f"около {diff_pct:.0f}%")
         if is_good:
-            st.success(f"По модели объявление выгодное: заявленная цена ниже прогноза на **{diff_rub:,.0f}** руб (~**{diff_pct:.0f}%**).".replace(",", " "))
+            st.success(f"По модели объявление выгодное: заявленная цена ниже прогноза на **{diff_rub:,.0f}** руб (около **{diff_pct:.0f}%**).".replace(",", " "))
         else:
-            st.warning(f"По модели объявление не выгодное: заявленная цена выше прогноза на **{-diff_rub:,.0f}** руб (~**{-diff_pct:.0f}%**).".replace(",", " "))
+            st.warning(f"По модели объявление не выгодное: заявленная цена выше прогноза на **{-diff_rub:,.0f}** руб (около **{-diff_pct:.0f}%**).".replace(",", " "))
         st.divider()
 
-    # Метрики: предсказанная цена и цена за м²
+    # Крупные числа: итоговая цена и руб/м2.
     cols = st.columns(2)
     with cols[0]:
         st.metric("Предсказанная цена", f"{price:,.0f} руб".replace(",", " "))
     with cols[1]:
-        st.metric("Цена за м²", f"{price_per_sqm:,.0f} руб/м²".replace(",", " ") if price_per_sqm else "—")
+        st.metric("Цена за м2", f"{price_per_sqm:,.0f} руб/м2".replace(",", " ") if price_per_sqm else "-")
 
-    # Исходные параметры сразу под ценой
+    # Таблица введённых/распарсенных признаков.
     st.subheader("Исходные параметры")
     param_keys = [
         ("total_area", "Площадь"),
@@ -334,7 +330,7 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any], from_link: bool 
     )
     st.dataframe(param_df, use_container_width=True, hide_index=True)
 
-    # Анализ по похожим объявлениям
+    # Запрос похожих объявлений для графиков.
     search_filters = {"limit": 100}
     if total_area and total_area > 0:
         search_filters["area_min"] = max(0, total_area - 15)
@@ -350,7 +346,7 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any], from_link: bool 
         st.subheader("Анализ по похожим объявлениям")
         df_offers = pd.DataFrame(offers)
         if "price" in df_offers.columns:
-            # Распределение цен + вертикальная линия прогноза
+            # Гистограмма цен выборки и линия прогноза.
             fig_hist = px.histogram(
                 df_offers, x="price", nbins=30,
                 title="Распределение цен похожих объявлений",
@@ -364,7 +360,7 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any], from_link: bool 
             st.plotly_chart(fig_hist, use_container_width=True)
 
         if "total_area" in df_offers.columns and "price" in df_offers.columns:
-            # Площадь vs цена: точки из БД + наша квартира
+            # scatter: похожие объявления и точка текущего прогноза.
             fig_scatter = go.Figure()
             fig_scatter.add_trace(
                 go.Scatter(
@@ -382,7 +378,7 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any], from_link: bool 
                 )
             fig_scatter.update_layout(
                 title="Взаимосвязь площади и стоимости",
-                xaxis_title="Общая площадь (м²)", yaxis_title="Стоимость (руб)",
+                xaxis_title="Общая площадь (м2)", yaxis_title="Стоимость (руб)",
                 height=320, showlegend=True,
             )
             st.plotly_chart(fig_scatter, use_container_width=True)
@@ -406,7 +402,7 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any], from_link: bool 
         if search_err:
             st.caption("Похожие объявления для графика недоступны: " + search_err)
 
-    # Карта
+    # Карта: координаты объекта или центр Москвы.
     st.subheader("Карта")
     coords = data.get("coordinates") if isinstance(data.get("coordinates"), dict) else None
     lat = coords.get("lat", CENTER_MOSCOW[0]) if coords else CENTER_MOSCOW[0]
@@ -415,7 +411,7 @@ def render_result(result: Dict[str, Any], data: Dict[str, Any], from_link: bool 
     folium_static(m)
 
 
-# Загрузка списка метро один раз
+# Справочник метро в session_state на сессию браузера.
 if "metro_options" not in st.session_state:
     st.session_state["metro_options"] = fetch_metro_list()
 
@@ -427,7 +423,7 @@ mode = st.radio("Режим", ["Ввести параметры", "По ссыл
 if mode == "Ввести параметры":
     with st.sidebar:
         st.header("Параметры квартиры")
-        st.markdown("<span style='color:red'>*</span> — обязательные поля", unsafe_allow_html=True)
+        st.markdown("<span style='color:red'>*</span> - обязательные поля", unsafe_allow_html=True)
         address_input = st.text_input("Адрес *", placeholder="ул. Льва Толстого, 5")
         district = st.text_input("Район *", placeholder="Хамовники")
         col1, col2 = st.columns(2)
@@ -435,7 +431,7 @@ if mode == "Ввести параметры":
             floor_number = st.number_input("Этаж *", min_value=1, max_value=100, value=5)
         with col2:
             floors_count = st.number_input("Этажей в доме *", min_value=1, max_value=100, value=10)
-        total_area = st.number_input("Общая площадь (м²) *", min_value=10.0, max_value=500.0, value=50.0, step=0.5)
+        total_area = st.number_input("Общая площадь (м2) *", min_value=10.0, max_value=500.0, value=50.0, step=0.5)
         room_label = st.selectbox("Комнаты *", [r[0] for r in ROOM_OPTIONS], index=1)
         rooms_count, flat_type = next((r[1], r[2]) for r in ROOM_OPTIONS if r[0] == room_label)
         repair_label = st.selectbox("Тип ремонта *", [r[0] for r in REPAIR_OPTIONS], index=0)
@@ -447,12 +443,12 @@ if mode == "Ввести параметры":
         travel_time = st.number_input("Время до метро (мин) *", min_value=0, max_value=60, value=10)
 
         if st.button("Предсказать цену", type="primary"):
-            # Обязательные поля: адрес или район. Площадь больше нуля.
+            # Проверка: адрес или район, площадь >= 10 м2.
             has_geo = bool(address_input and address_input.strip()) or bool(district and district.strip())
             if not has_geo:
                 st.error("Укажите адрес или район (обязательно для расчёта местоположения).")
             elif not total_area or total_area < 10:
-                st.error("Общая площадь должна быть не менее 10 м².")
+                st.error("Общая площадь должна быть не менее 10 м2.")
             else:
                 address_to_geocode = address_input.strip() if address_input else (f"Москва, {district}".strip() if district else None)
                 lat, lng = CENTER_MOSCOW[0], CENTER_MOSCOW[1]
@@ -485,7 +481,7 @@ if mode == "Ввести параметры":
                     "travel_time": int(travel_time),
                     "coordinates": {"lat": lat, "lng": lng},
                 }
-                # Подставляем цену по рынку района: медиана руб/м2 по похожим объявлениям, модель дает адекватный прогноз
+                # Поле price из медианы руб/м2 по /search, вход для модели при ручном вводе.
                 search_filters = {"limit": 80}
                 if total_area and total_area > 0:
                     search_filters["area_min"] = max(0, total_area - 15)
@@ -551,7 +547,7 @@ else:
                     else:
                         st.error(
                             "Параметры объявления получены, но прогноз не вернулся "
-                            "(сбой запроса /predict — сообщение об ошибке выше)."
+                            "(сбой запроса /predict - сообщение об ошибке выше)."
                         )
 
 if "prediction_result" in st.session_state and st.session_state["prediction_result"]:
@@ -562,6 +558,6 @@ if "prediction_result" in st.session_state and st.session_state["prediction_resu
     )
 else:
     if mode == "Ввести параметры":
-        st.info("Заполните параметры в боковой панели и нажмите «Предсказать цену».")
+        st.info('Заполните параметры в боковой панели и нажмите "Предсказать цену".')
     else:
-        st.info("Вставьте ссылку на объявление Циан и нажмите «Оценить по ссылке».")
+        st.info('Вставьте ссылку на объявление Циан и нажмите "Оценить по ссылке".')

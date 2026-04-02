@@ -9,7 +9,7 @@ from .database import DB, model_classes
 from .pagecheck import pagecheck
 from .tools import headers, proxyDict, proxyBlockedTime, proxyErrorCount, proxyConnectionErrors, proxyTemporaryBan, check_and_unfreeze_proxies, load_proxy_bans, recjson
 
-# Импорт curl_cffi для резидентского прокси
+# curl_cffi: HTTP с имитацией TLS (резидентские прокси).
 try:
     import curl_cffi.requests as curl_requests
     CURL_CFFI_AVAILABLE = True
@@ -21,10 +21,7 @@ URL = 'https://www.cian.ru'
 
 
 def fetch_flat_page_html_http(flat_id: str, timeout: float = 20.0) -> str | None:
-    """
-    Одна страница объявления без Playwright (быстрый путь для API getparams / Streamlit).
-    Циан отдает offerData в HTML, тот же разбор, что и после браузера.
-    """
+    """GET страницы объявления; в HTML ищется вложенный JSON offerData."""
     import httpx
 
     url = f"{URL}/rent/flat/{flat_id}/"
@@ -60,7 +57,7 @@ def fetch_flat_page_html_http(flat_id: str, timeout: float = 20.0) -> str | None
 
 
 def fetch_flat_page_curl_cffi_direct(flat_id: str, timeout: float = 25.0) -> str | None:
-    """Обход части антибота Циана с сервера (TLS fingerprint как у Chrome)."""
+    """GET через curl_cffi с impersonate=chrome110."""
     if not CURL_CFFI_AVAILABLE:
         return None
     url = f"{URL}/rent/flat/{flat_id}/"
@@ -95,7 +92,7 @@ _browser = None
 def _get_browser():
     global _playwright, _browser
     if _browser is None or not _browser.is_connected():
-        # Если браузер закрыт или не подключен, пересоздаем его
+        # Пересоздание Chromium при обрыве соединения.
         if _browser:
             try:
                 _browser.close()
@@ -107,7 +104,7 @@ def _get_browser():
             except:
                 pass
         _playwright = sync_playwright().start()
-        # Улучшенные параметры для обхода детекции в headless режиме
+        # Headless Chromium: снижение признаков automation.
         _browser = _playwright.chromium.launch(
             headless=True,
             args=[
@@ -132,8 +129,8 @@ def close_browser():
         _playwright.stop()
         _playwright = None
 
-# Глобальный счетчик CAPTCHA для отслеживания подряд идущих CAPTCHA
-_captcha_count = {}  # {page: count}
+# Число подряд CAPTCHA на одном page (ключ: номер страницы списка или id объявления).
+_captcha_count = {}
 
 def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, use_proxy=True):
     global _captcha_count
@@ -143,17 +140,17 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
     if use_proxy:
         if respTry == 5:
             check_and_unfreeze_proxies()
-            load_proxy_bans()  # Загружаем актуальные баны из файла
-            # Сбрасываем счетчик CAPTCHA для новой страницы
+            load_proxy_bans()
+            # Новый цикл запросов к этому page, обнулить счетчик CAPTCHA.
             _captcha_count[page] = 0
 
-        # Исключаем пустой прокси и временно забаненные прокси из доступных
+        # Доступны прокси без пустого ключа, не в temporary ban и с истёкшим blocked_until.
         available_proxies = {
             k: v for k, v in proxyDict.items()
             if v <= time.time() and k != '' and not proxyTemporaryBan.get(k, False)
         }
 
-        # Логируем статистику доступных прокси (только при первом запросе страницы)
+        # Сводка по прокси при первой попытке (respTry == начальное значение).
         if respTry == 5:
             total_proxies = len([p for p in proxyDict.keys() if p != ''])
             banned_proxies = sum(1 for p in proxyDict.keys() if p != '' and proxyTemporaryBan.get(p, False))
@@ -162,7 +159,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             new_proxies_available = sum(1 for p in available_proxies.keys() if '4MfBTo:mgCBFh' in p)
             logging.info(f'Proxy stats: total={total_proxies}, banned={banned_proxies}, time_blocked={time_blocked}, available={available_count}, new_proxies_available={new_proxies_available}')
 
-        # Проверяем, не заблокированы ли все прокси CAPTCHA (блокировка > 10 минут)
+        # Все прокси заняты: при длительной блокировке и малом respTry вернуть CAPTCHA.
         if len(available_proxies) < 1:
             non_empty_proxies = {k: v for k, v in proxyDict.items() if k != ''}
             if non_empty_proxies:
@@ -219,7 +216,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                 logging.error('No proxies configured in proxyDict')
                 return None
 
-    # Формируем URL и параметры запроса
+    # URL: карточка объявления (type=1) или cat.php со списком (type=0).
     if type == 1:  # Страница объявления
         url = f'{URL}/rent/flat/{page}/'
     else:  # Список страниц (type=0)
@@ -233,22 +230,22 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             params[rooms] = 1
         if sort:
             params['sort'] = sort
-        # Формируем URL с параметрами
+        # Query string для выдачи списка.
         param_str = '&'.join([f'{k}={v}' for k, v in params.items()])
         url = f'{URL}/cat.php?{param_str}'
     
     logging.info(f'getResponse: URL={url[:100]}..., proxy={proxy[:50] if proxy else "none"}...')
     
-    # Для резидентского прокси используем curl_cffi вместо Playwright
+    # Поддомен pool.proxy.market: запрос через curl_cffi, не через Playwright.
     if proxy and 'pool.proxy.market' in proxy and CURL_CFFI_AVAILABLE:
         try:
             logging.info(f'Using curl_cffi for residential proxy')
             start_time = time.time()
             
-            # Формируем прокси для curl_cffi
+            # Словарь proxies для curl_cffi.
             proxies = {"http": proxy, "https": proxy}
             
-            # Выбираем случайные заголовки
+            # Случайный набор из tools.headers.
             if headers:
                 selected_headers = random.choice(headers).copy()
             else:
@@ -260,7 +257,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     "Referer": "https://www.cian.ru/",
                 }
             
-            # Делаем запрос через curl_cffi
+            # GET с TLS-имперсонацией.
             response = curl_requests.get(
                 url,
                 headers=selected_headers,
@@ -282,7 +279,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     logging.warning(f'getResponse (curl_cffi): No retries left, returning None')
                     return None
                 
-                # Блокируем прокси при ошибках
+                # Ошибка ответа: увеличить blocked_until у прокси.
                 if status in (403, 429):
                     block_time = 20 * 60
                     proxyDict[proxy] = time.time() + block_time
@@ -304,15 +301,15 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                 
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
-            # Проверяем на CAPTCHA
+            # Текст ответа: признаки CAPTCHA.
             if content and ('captcha' in content.lower() or 'капча' in content.lower() or 'recaptcha' in content.lower()):
                 logging.error("CAPTCHA detected in response content (curl_cffi)!")
                 if proxy:
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
-                        block_time = 15 * 60  # 15 минут при повторных ошибках (уменьшено с 30)
+                        block_time = 15 * 60
                     else:
-                        block_time = 10 * 60  # 10 минут при первой ошибке (уменьшено с 20)
+                        block_time = 10 * 60
                     proxyDict[proxy] = time.time() + block_time
                     proxyBlockedTime[proxy] = time.time()
                     logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} min due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
@@ -340,14 +337,14 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     return 'CAPTCHA'
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
-            # Успешный запрос
+            # Успех curl_cffi: сброс ошибок по прокси.
             proxyDict[proxy] = time.time() + 0
             proxyErrorCount[proxy] = 0
             proxyConnectionErrors[proxy] = 0
             if page in _captcha_count:
                 _captcha_count[page] = 0
             
-            # Паузы только при массовом парсинге (dbinsert), иначе Streamlit/API ждут лишние секунды
+            # Случайная пауза между запросами только при записи в БД (фоновый парсер).
             if dbinsert:
                 if random.random() < 0.7:
                     delay = random.uniform(3, 12)
@@ -369,7 +366,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                 logging.warning(f'getResponse (curl_cffi): No retries left after exception, returning None')
                 return None
             
-            # Блокируем прокси при исключении
+            # Исключение curl_cffi: блокировка прокси по типу ошибки.
             if proxy:
                 if 'connection' in error_msg.lower() or 'timeout' in error_msg.lower():
                     proxyConnectionErrors[proxy] = proxyConnectionErrors.get(proxy, 0) + 1
@@ -393,21 +390,20 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             
             return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
     
-    # Делаем запрос через Playwright (для обычных прокси)
+    # Остальные прокси или прямой заход: Playwright.
     try:
         browser = _get_browser()
         context_options = {}
         
-        # Устанавливаем User-Agent и другие заголовки
+        # user_agent и extra_http_headers из случайного элемента tools.headers.
         if headers:
             selected_headers = random.choice(headers)
             context_options['user_agent'] = selected_headers.get('User-Agent')
-            # Устанавливаем дополнительные заголовки
             extra_headers = {k: v for k, v in selected_headers.items() if k != 'User-Agent'}
             if extra_headers:
                 context_options['extra_http_headers'] = extra_headers
         
-        # Добавляем дополнительные параметры для обхода детекции
+        # Параметры контекста: viewport, locale, geolocation Москвы.
         context_options['viewport'] = {'width': 1920, 'height': 1080}
         context_options['locale'] = 'ru-RU'
         context_options['timezone_id'] = 'Europe/Moscow'
@@ -419,16 +415,15 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
         context_options['is_mobile'] = False
         context_options['java_script_enabled'] = True
         
-        # Устанавливаем прокси с правильной обработкой аутентификации
+        # proxy в контексте: разбор userinfo из URL при необходимости.
         if proxy:
-            # Если прокси содержит аутентификацию (format: http://USER:PASS@IP:PORT)
+            # URL вида http://user:pass@host:port: server + http_credentials.
             if '@' in proxy:
                 from urllib.parse import urlparse
                 try:
                     parsed = urlparse(proxy)
                     proxy_server = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
                     context_options['proxy'] = {'server': proxy_server}
-                    # Добавляем аутентификацию
                     if parsed.username and parsed.password:
                         context_options['http_credentials'] = {
                             'username': parsed.username,
@@ -438,7 +433,6 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     logging.warning(f'Failed to parse proxy {proxy[:50]}...: {e}, using as-is')
                     context_options['proxy'] = {'server': proxy}
             else:
-                # Прокси без аутентификации
                 context_options['proxy'] = {'server': proxy}
         
         context = None
@@ -446,7 +440,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
         try:
             context = browser.new_context(**context_options)
             
-            # Добавляем init script для обхода детекции автоматизации
+            # init_script: маскировка navigator.webdriver и связанных полей.
             context.add_init_script("""
                 // Убираем webdriver
                 Object.defineProperty(navigator, 'webdriver', {
@@ -483,11 +477,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             page_obj = context.new_page()
             
             start_time = time.time()
-            # domcontentloaded, таймаут 30 с на попытку
+            # wait_until=domcontentloaded, timeout 30 s.
             response = page_obj.goto(url, wait_until='domcontentloaded', timeout=30000)
             elapsed = time.time() - start_time
         except Exception as e:
-            # Закрываем контекст и страницу при ошибке создания
+            # Закрыть page/context при сбое goto.
             if page_obj:
                 try:
                     page_obj.close()
@@ -498,7 +492,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     context.close()
                 except:
                     pass
-            raise  # Пробрасываем исключение дальше для обработки в основном блоке except
+            raise
         
         if response:
             status = response.status
@@ -506,7 +500,6 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             
             if status != 200:
                 logging.error(f'getResponse: Page {page} | Retry: {respTry} | Status: {status}')
-                # Безопасное закрытие
                 try:
                     if page_obj:
                         page_obj.close()
@@ -522,7 +515,6 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     logging.warning(f'getResponse: No retries left, returning None')
                     return None
 
-                # Блокируем прокси при ошибках (только если прокси использовался)
                 if proxy:
                     if status in (403, 429):
                         block_time = 15 * 60
@@ -540,7 +532,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     elif status != 404:
                         proxyDict[proxy] = time.time() + (1 * 60)
                 elif status in (403, 429):
-                    # Без прокси 403/429, один раз пробуем с прокси (для режима по ссылке)
+                    # Первый заход без прокси: повтор с прокси.
                     if not use_proxy and respTry > 0:
                         logging.info(f'getResponse: Status {status} without proxy, retrying with proxy')
                         return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy=True)
@@ -553,13 +545,11 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
 
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
-            # Успешный запрос - проверяем на CAPTCHA ДО закрытия страницы
+            # HTTP 200: далее детект CAPTCHA до закрытия page.
             current_url = page_obj.url
             
-            # Проверяем редирект на страницу CAPTCHA (самый надежный способ)
             is_captcha_redirect = 'captcha' in current_url.lower() or 'showcaptcha' in current_url.lower()
             
-            # Проверяем видимые элементы CAPTCHA на странице
             captcha_visible = False
             try:
                 captcha_selectors = [
@@ -579,14 +569,13 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             except:
                 pass
             
-            # Для одной страницы объявления (type=1) быстрый путь: не вызываем inner_text('body') и не считаем карточки
+            # type==1: одна карточка, без обхода списка и без inner_text('body').
             single_offer = (type == 1)
             has_content = False
             visible_text = ""
             has_vpn_message = False
             cards_count = 0
             if single_offer:
-                # type=1: страница одной квартиры, проверки списка не нужны
                 has_content = True
             else:
                 try:
@@ -621,7 +610,6 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
 
             content = page_obj.content()
             
-            # Безопасное закрытие
             try:
                 if page_obj:
                     page_obj.close()
@@ -633,7 +621,6 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             except:
                 pass
             
-            # Проверяем на CAPTCHA - приоритет: редирект > видимые элементы > VPN сообщение (только если нет контента) > паттерны в HTML
             captcha_detected = False
             if is_captcha_redirect:
                 logging.error("CAPTCHA detected: redirect to CAPTCHA page!")
@@ -642,51 +629,43 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                 logging.error("CAPTCHA detected: visible CAPTCHA element on page!")
                 captcha_detected = True
             elif has_vpn_message and not has_content:
-                # VPN блокировка только если нет контента объявлений
                 logging.error("CAPTCHA detected: VPN block message (no content found)!")
                 captcha_detected = True
             elif content and ('showcaptcha' in content.lower() or 'tmgrdfrend/showcaptcha' in content.lower()):
-                # Проверяем только конкретные паттерны редиректа на CAPTCHA в HTML
                 logging.error("CAPTCHA detected: CAPTCHA redirect pattern in content!")
                 captcha_detected = True
             
-            # Если есть контент объявлений, страница работает (даже если где-то упоминается VPN)
             if has_content and not is_captcha_redirect and not captcha_visible:
                 logging.info(f"Content found on page - page is working (found {cards_count} cards/items)")
-                captcha_detected = False  # Переопределяем, если есть контент
+                captcha_detected = False
             
             if captcha_detected:
                 if proxy:
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
-                        block_time = 15 * 60  # 15 минут при повторных ошибках (уменьшено с 30)
+                        block_time = 15 * 60
                     else:
-                        block_time = 10 * 60  # 10 минут при первой ошибке (уменьшено с 20)
+                        block_time = 10 * 60
                     proxyDict[proxy] = time.time() + block_time
                     proxyBlockedTime[proxy] = time.time()
                     logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} min due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
                 
-                # Увеличиваем счетчик CAPTCHA для этой страницы
                 _captcha_count[page] = _captcha_count.get(page, 0) + 1
                 
-                # Если 2 или более прокси подряд получили CAPTCHA, делаем длительную паузу и пропускаем страницу
                 if _captcha_count[page] >= 2:
                     logging.warning(f'{_captcha_count[page]} CAPTCHA in a row for page {page}, waiting 2 minutes before skipping')
-                    time.sleep(120)  # 2 минуты пауза после множественных CAPTCHA
+                    time.sleep(120)
                     return 'CAPTCHA'
                 
-                # Если осталось мало попыток и все прокси заблокированы, делаем паузу и возвращаем CAPTCHA
                 if respTry <= 2:
-                    # Проверяем, сколько прокси доступно
                     available_after_captcha = {k: v for k, v in proxyDict.items() if v <= time.time() and k != ''}
                     if len(available_after_captcha) == 0:
                         logging.warning(f'All proxies blocked after CAPTCHA, waiting 1 minute before skipping page {page}')
-                        time.sleep(60)  # 1 минута пауза
+                        time.sleep(60)
                         return 'CAPTCHA'
                 
-                # Делаем паузу перед следующей попыткой после CAPTCHA
                 if respTry > 1:
-                    delay = random.uniform(30, 60)  # 30-60 секунд пауза
+                    delay = random.uniform(30, 60)
                     logging.info(f'Waiting {delay:.1f}s before retry after CAPTCHA')
                     time.sleep(delay)
                 
@@ -694,12 +673,10 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
                     return 'CAPTCHA'
                 return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
             
-            # Обновляем состояние прокси после успешного запроса (только если прокси использовался)
             if proxy:
                 proxyDict[proxy] = time.time() + 0
                 proxyErrorCount[proxy] = 0
                 proxyConnectionErrors[proxy] = 0
-            # Сбрасываем счетчик CAPTCHA при успешном запросе
             if page in _captcha_count:
                 _captcha_count[page] = 0
             
@@ -718,7 +695,6 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             return content
         else:
             logging.error(f'getResponse: No response received')
-            # Безопасное закрытие
             try:
                 if page_obj:
                     page_obj.close()
@@ -741,14 +717,12 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
         error_msg = str(e)
         logging.error(f'getResponse: Exception for proxy {proxy[:50] if proxy else "none"}...: {e}')
         
-        # Если браузер закрыт, пересоздаем его
         if 'closed' in error_msg.lower() or 'has been closed' in error_msg.lower():
             logging.warning('Browser/context/page was closed, recreating browser')
             try:
                 close_browser()
             except:
                 pass
-            # Принудительно сбрасываем браузер
             global _browser, _playwright
             _browser = None
             _playwright = None
@@ -757,63 +731,50 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             logging.warning(f'getResponse: No retries left after exception, returning None')
             return None
         
-        # Блокируем прокси при исключении
         if proxy:
-            # Проверяем, является ли это ошибкой подключения
             if 'connection' in error_msg.lower() or 'err_proxy' in error_msg.lower():
-                # Ошибка подключения - блокируем на более длительное время
                 proxyConnectionErrors[proxy] = proxyConnectionErrors.get(proxy, 0) + 1
                 connection_errors = proxyConnectionErrors[proxy]
                 
-                # Если много ошибок подключения подряд, блокируем на долго
                 if connection_errors >= 3:
-                    block_time = 60 * 60  # 1 час блокировки
+                    block_time = 60 * 60
                     logging.warning(f'Proxy {proxy[:50]}... has {connection_errors} connection errors, blocking for 1 hour')
                 elif connection_errors >= 2:
-                    block_time = 30 * 60  # 30 минут блокировки
+                    block_time = 30 * 60
                     logging.warning(f'Proxy {proxy[:50]}... has {connection_errors} connection errors, blocking for 30 min')
                 else:
-                    block_time = 10 * 60  # 10 минут блокировки
+                    block_time = 10 * 60
                     logging.warning(f'Proxy {proxy[:50]}... connection error, blocking for 10 min')
                 
                 proxyDict[proxy] = time.time() + block_time
                 proxyBlockedTime[proxy] = time.time()
             else:
-                # Другая ошибка - обычная блокировка
                 proxyDict[proxy] = time.time() + (1 * 60)
             proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
         
         return getResponse(page, type, respTry - 1, sort, rooms, dbinsert, use_proxy)
-def prePage(data, type=0):
+def prePage(data, type=0, proxy=None):
     if type:
-        # Для страницы объявления ищем "offerData"
+        # Карточка: JSON после ключа offerData.
         key = '"offerData":'
         pattern = key + r'\s*(\{.*?\})'
         if pageJS := recjson(pattern, data):
             return pageJS
     else:
-        # Для списка страниц структура изменилась - ищем объект с ключом "page", 
-        # который содержит "pageNumber" и "products"
-        # Старый паттерн "pageview", больше не работает
-        
-        # Вариант 1: Ищем объект, который содержит "pageNumber" и "products" одновременно
-        # Используем более надежный подход - ищем участок HTML, где есть оба поля
+        # Список выдачи: объект с pageNumber и products (скобочный разбор по вхождениям в HTML).
         try:
-            # Сначала проверяем, есть ли вообще "pageNumber" и "products" в HTML
             has_pageNumber = '"pageNumber"' in data
             has_products = '"products"' in data
             logging.info(f"HTML check: pageNumber={has_pageNumber}, products={has_products}, HTML length={len(data)}")
             
             if not has_pageNumber or not has_products:
                 logging.warning(f"Missing required fields: pageNumber={has_pageNumber}, products={has_products}")
-                # Сохраняем часть HTML для анализа (первые 2000 символов и последние 2000)
                 preview_start = data[:2000] if len(data) > 2000 else data
                 preview_end = data[-2000:] if len(data) > 2000 else ""
                 logging.warning(f"HTML preview (first 2000 chars): {preview_start}")
                 if preview_end:
                     logging.warning(f"HTML preview (last 2000 chars): {preview_end}")
                 
-                # Проверяем, не блокировка ли это (капча, 403 и т.д.)
                 captcha_detected = False
                 if 'captcha' in data.lower() or 'капча' in data.lower() or 'recaptcha' in data.lower():
                     logging.error("CAPTCHA detected in response!")
@@ -823,52 +784,40 @@ def prePage(data, type=0):
                 if 'access denied' in data.lower() or 'доступ запрещен' in data.lower():
                     logging.error("Access denied in response!")
                 
-                # Если обнаружена CAPTCHA, блокируем прокси на 10-15 минут и возвращаем специальное значение
                 if captcha_detected and proxy:
                     proxyErrorCount[proxy] = proxyErrorCount.get(proxy, 0) + 1
                     if proxyErrorCount[proxy] >= 2:
-                        block_time = 15 * 60  # 15 минут при повторных ошибках (уменьшено с 30)
+                        block_time = 15 * 60
                     else:
-                        block_time = 10 * 60  # 10 минут при первой ошибке (уменьшено с 30)
+                        block_time = 10 * 60
                     logging.warning(f"Blocking proxy {proxy[:50]}... for {block_time//60} minutes due to CAPTCHA (errors: {proxyErrorCount[proxy]})")
                     proxyDict[proxy] = time.time() + block_time
                     proxyBlockedTime[proxy] = time.time()
                     return 'CAPTCHA'
             
-            # Ищем позицию, где есть и "pageNumber", и "products" рядом
-            # Сначала находим все вхождения "pageNumber"
             pageNumber_pattern = r'"pageNumber"\s*:\s*\d+'
             pageNumber_matches = list(re.finditer(pageNumber_pattern, data))
             
             logging.info(f"Found {len(pageNumber_matches)} 'pageNumber' matches")
             
-            # Для каждого найденного "pageNumber" проверяем, есть ли рядом "products"
             for idx, pn_match in enumerate(pageNumber_matches):
                 pn_start = pn_match.start()
-                # Ищем "products" в пределах 100000 символов после "pageNumber"
                 search_end = min(len(data), pn_start + 100000)
                 search_area = data[pn_start:search_end]
                 
                 if '"products"' in search_area or '"products":' in search_area:
-                    # Нашли область, где есть и pageNumber, и products
                     logging.info(f"Match {idx+1}: Found 'products' near 'pageNumber' at position {pn_start}")
                     
-                    # Ищем начало объекта, который содержит оба поля
-                    # Используем более надежный подход - ищем объект, который содержит оба поля
-                    # Начинаем поиск с позиции перед pageNumber
                     search_start = max(0, pn_start - 50000)
                     search_end = min(len(data), pn_start + 100000)
                     search_area = data[search_start:search_end]
                     
-                    # Ищем все открывающие скобки в этой области
                     bracket_positions = []
                     for i, char in enumerate(search_area):
                         if char == '{':
                             bracket_positions.append(search_start + i)
                     
-                    # Проверяем каждый объект, начиная с самого большого (последнего открывающего скобки)
                     for bracket_pos in reversed(bracket_positions):
-                        # Извлекаем объект, начиная с этой позиции
                         start = bracket_pos
                         end = start + 1
                         brackets = 1
@@ -882,41 +831,30 @@ def prePage(data, type=0):
                             end += 1
                         
                         if brackets == 0:
-                            # Проверяем, содержит ли этот объект оба поля
                             obj_text = data[start:end]
                             if '"pageNumber"' in obj_text and '"products"' in obj_text:
                                 try:
                                     pageJS = json.loads(obj_text)
-                                    # Проверяем, есть ли pageNumber и products на верхнем уровне
                                     if 'pageNumber' in pageJS and 'products' in pageJS:
                                         logging.info(f"Found page object with pageNumber={pageJS.get('pageNumber')} and {len(pageJS.get('products', []))} products")
                                         return {'page': pageJS}
-                                    # Если нет на верхнем уровне, проверяем объект 'page'
                                     elif 'page' in pageJS and isinstance(pageJS['page'], dict):
                                         page_obj = pageJS['page']
                                         if 'pageNumber' in page_obj and 'products' in page_obj:
                                             logging.info(f"Found page object inside 'page' key with pageNumber={page_obj.get('pageNumber')} and {len(page_obj.get('products', []))} products")
                                             return {'page': page_obj}
-                                        # Если products на верхнем уровне, а pageNumber в page
                                         elif 'pageNumber' in page_obj and 'products' in pageJS:
-                                            # Создаем объединенный объект
                                             combined = {**page_obj, 'products': pageJS['products']}
                                             logging.info(f"Found page object (combined) with pageNumber={combined.get('pageNumber')} and {len(combined.get('products', []))} products")
                                             return {'page': combined}
-                                    # Если products на верхнем уровне
                                     elif 'products' in pageJS:
-                                        # Ищем pageNumber в любом вложенном объекте
                                         if 'page' in pageJS and isinstance(pageJS['page'], dict) and 'pageNumber' in pageJS['page']:
                                             combined = {**pageJS['page'], 'products': pageJS['products']}
                                             logging.info(f"Found page object (combined from nested) with pageNumber={combined.get('pageNumber')} and {len(combined.get('products', []))} products")
                                             return {'page': combined}
                                     else:
                                         logging.info(f"Match {idx+1}: Object contains both fields in text but missing in parsed JSON. Keys: {list(pageJS.keys())[:10]}")
-                                except json.JSONDecodeError as e:
-                                    # Пробуем следующий объект
-                                    continue
-                                except Exception as e:
-                                    logging.warning(f"Match {idx+1}: Failed to parse page JSON: {e}")
+                                except json.JSONDecodeError:
                                     continue
                                 except Exception as e:
                                     logging.warning(f"Match {idx+1}: Failed to parse page JSON: {e}")
@@ -930,7 +868,7 @@ def prePage(data, type=0):
         except Exception as e:
             logging.error(f"Error in variant 1: {e}")
         
-        # Вариант 2: Старый паттерн (на случай, если где-то еще работает)
+        # Запасной разбор: ключ "pageview" в legacy-разметке.
         try:
             key = '"pageview",'
             pattern = key + r'\s*(\{.*?\})'
@@ -946,10 +884,7 @@ def prePage(data, type=0):
 def fetch_flat_page_requests_proxies(
     flat_id: str, max_tries: int = 8, request_timeout: int = 20
 ) -> str | None:
-    """
-    Загрузка HTML объявления через requests + прокси (как в ocenomet), без Playwright.
-    Для /getparams после неудачного прямого httpx.
-    """
+    """HTML объявления: requests с ротацией прокси из proxyDict (без Playwright)."""
     import requests
 
     url = f"{URL}/rent/flat/{flat_id}/"
@@ -961,7 +896,7 @@ def fetch_flat_page_requests_proxies(
         mintime = min(non_empty.values())
         if mintime > time.time():
             wait = mintime - time.time()
-            # Интерактивный API: не ждать долгую разблокировку прокси (ocenomet: >=10s, skip)
+            # Ожидание разблокировки прокси только если осталось < 10 с.
             if wait < 10:
                 time.sleep(min(wait, 8.0))
             else:
@@ -1013,10 +948,7 @@ def _html_has_usable_offer_data(html: str | None) -> bool:
 
 
 def race_fetch_flat_html_for_api(flat_id: str, wait_seconds: float = 20.0) -> str | None:
-    """
-    Параллельно: httpx, curl_cffi, requests+прокси, кто первым принес валидный HTML с offerData.
-    Укладывается в ~wait_seconds вместо суммы трёх последовательных таймаутов.
-    """
+    """Три загрузчика HTML в ThreadPool; возврат при первом результате с offerData без CAPTCHA."""
     fid = str(flat_id)
 
     def run_http():
@@ -1055,9 +987,7 @@ def race_fetch_flat_html_for_api(flat_id: str, wait_seconds: float = 20.0) -> st
 
 
 def parse_rent_flat_for_api(flat_id: str) -> dict | None:
-    """
-    Путь только для FastAPI /getparams: параллельный HTTP, без Playwright и без ProcessPool.
-    """
+    """Разбор одного объявления для /getparams: параллельные HTTP-загрузки HTML, без Playwright."""
     html = race_fetch_flat_html_for_api(flat_id, wait_seconds=22.0)
     if not html:
         logging.warning("parse_rent_flat_for_api: no HTML for flat_id=%s", flat_id)
@@ -1078,11 +1008,9 @@ def listPages(page, sort=None, rooms=None):
     pagesList = []
     response = getResponse(page, type=0, sort=sort, rooms=rooms)
     
-    # Обработка CAPTCHA - пропускаем страницу и возвращаем пустой список
-    # чтобы парсер мог продолжить со следующей страницы
     if response == 'CAPTCHA':
         logging.warning(f"listPages: CAPTCHA detected for page={page}, sort={sort}, rooms={rooms}, skipping page")
-        return []  # Возвращаем пустой список, чтобы парсер продолжил
+        return []
     
     if not response:
         logging.warning(f"listPages: getResponse returned None for page={page}, sort={sort}, rooms={rooms}")
@@ -1108,15 +1036,12 @@ def listPages(page, sort=None, rooms=None):
 
 
 def apartPage(pagesList, dbinsert=True, max_retries=2):
-    """
-    Парсит список объявлений с улучшенной логикой пропуска проблемных.
-    max_retries - максимальное количество попыток для одного объявления
-    """
+    """Обход cian_id: вставка/обновление в БД или один dict при dbinsert=False (до max_retries на id)."""
     pages_cnt = 0
     skipped_count = 0
     existing_count = 0
     filtered_count = 0
-    failed_pages = {}  # Счетчик неудачных попыток для каждого объявления
+    failed_pages = {}
     
     for page in pagesList:
         exist = False
@@ -1126,14 +1051,12 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
             logging.info(f"Apart page {page} already exists")
             continue
         
-        # Проверяем, сколько раз мы уже пытались парсить это объявление
         retry_count = failed_pages.get(page, 0)
         if retry_count >= max_retries:
             skipped_count += 1
             logging.info(f"Apart page {page} skipped after {retry_count} failed attempts")
             continue
 
-        # Режим по ссылке (Streamlit): сначала быстрый HTTP без браузера
         if not dbinsert:
             html_fast = race_fetch_flat_html_for_api(str(page), wait_seconds=22.0)
             if html_fast:
@@ -1144,16 +1067,14 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
                     return data_fast
             logging.info("Apart page %s: fast HTTP miss, fallback to getResponse", page)
 
-        # Интерактив: сначала без прокси, при сбое с прокси как у парсера
         use_px = bool(dbinsert)
         response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2, use_proxy=use_px)
         if not dbinsert and (not response or response == "CAPTCHA"):
             response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2, use_proxy=True)
         
-        # Обработка CAPTCHA - пропускаем объявление
         if response == 'CAPTCHA':
             logging.warning(f"Apart page {page}: CAPTCHA detected, skipping")
-            filtered_count += 1  # Считаем как отфильтрованное
+            filtered_count += 1
             continue
         
         if not response:
@@ -1164,12 +1085,10 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
         
         pageJS = prePage(response, type=1)
         if data := pagecheck(pageJS):
-            # Обрабатываем фото отдельно (это массив объектов)
             photos_data = data.pop('photos', [])
             if not dbinsert:
                 return data
             if exist:
-                # Это не должно произойти, т.к. exist проверяется выше
                 existing_count += 1
                 instances = [(model, data[key])
                              for key, model in model_classes.items() if key in data]
@@ -1177,10 +1096,8 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
                     logging.info(f"Apart page {page}, table {model} is updating")
                     DB.update(model, {'cian_id': page}, update_values)
                 
-                # Для фото: удаляем старые и вставляем новые
                 if photos_data:
                     from .database import Photos
-                    # Удаляем старые фото для этого объявления
                     session = DB.Session()
                     try:
                         session.query(Photos).filter(Photos.cian_id == page).delete()
@@ -1191,7 +1108,6 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
                     finally:
                         session.close()
                     
-                    # Вставляем новые фото
                     photo_instances = [Photos(**photo) for photo in photos_data]
                     if photo_instances:
                         DB.insert(*photo_instances)
@@ -1202,7 +1118,6 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
                 logging.info(f"Apart page {page} is adding")
                 DB.insert(*instances)
                 
-                # Добавляем фото для нового объявления
                 if photos_data:
                     from .database import Photos
                     photo_instances = [Photos(**photo) for photo in photos_data]
@@ -1210,11 +1125,9 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
                         DB.insert(*photo_instances)
                         logging.info(f"Apart page {page}: added {len(photo_instances)} photos")
             pages_cnt += 1
-            # Удаляем из списка неудачных при успехе
             if page in failed_pages:
                 del failed_pages[page]
         else:
-            # pagecheck вернул None - объявление отфильтровано (deal_type != 'rent' или category == 'dailyFlatRent')
             filtered_count += 1
             failed_pages[page] = retry_count + 1
             if retry_count + 1 < max_retries:
@@ -1223,35 +1136,29 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
     
     logging.info(f"Apart pages {pagesList[:5]}{'...' if len(pagesList) > 5 else ''} processed. Added: {pages_cnt}, Existing: {existing_count}, Filtered: {filtered_count}, Skipped: {skipped_count}")
 
-    # Один id + getparams/Streamlit: не возвращать 'FILTERED'/'OK', иначе API думает что это dict
+    # Один id и dbinsert=False: коды OK/FILTERED строками, клиент ожидает dict или None.
     if len(pagesList) == 1 and not dbinsert:
         return None
 
-    # Если были добавлены новые объявления, возвращаем 'OK'
     if pages_cnt > 0:
         logging.info(f"SUCCESS: Added {pages_cnt} new offers from {len(pagesList)} total")
         return 'OK'
     
-    # Если все объявления уже в базе, возвращаем 'EXISTING'
     if existing_count > 0 and pages_cnt == 0 and filtered_count == 0:
         logging.info(f"All {existing_count} offers already exist in database")
         return 'EXISTING'
     
-    # Если все объявления отфильтрованы, возвращаем 'FILTERED'
     if filtered_count > 0 and pages_cnt == 0:
         logging.info(f"All {filtered_count} offers were filtered out")
         return 'FILTERED'
     
-    # Если все объявления пропущены (CAPTCHA/ошибки), возвращаем 'SKIPPED'
     if skipped_count > 0 and pages_cnt == 0:
         logging.warning(f"All {skipped_count} offers were skipped due to errors/CAPTCHA")
         return 'SKIPPED'
     
-    # Если список был пуст или ничего не обработано
     if len(pagesList) == 0:
         logging.warning("Empty pagesList passed to apartPage")
         return None
     
-    # По умолчанию возвращаем 'OK' для обработанных страниц
     return 'OK'
 

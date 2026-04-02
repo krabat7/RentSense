@@ -26,7 +26,7 @@ def pagecheck(pageJS: dict):
     if offers['cian_id'] is None or offers['price'] is None:
         return
 
-    # Раньше отсекали все не Москву, для Streamlit/getparams ссылки из других регионов выглядели как снято
+    # oblId != 1: не Москва, объявление все равно принимается (ссылки в /getparams не режем по региону).
     obl_id = page.get('trackingData', {}).get('oblId')
     if obl_id is not None and obl_id != 1:
         logging.info(
@@ -34,13 +34,12 @@ def pagecheck(pageJS: dict):
             cianid,
             obl_id,
         )
-    # Обработка фотографий
+    # Фото: счётчик и список URL для таблицы photos.
     if page.get('photos'):
         offers['photos_count'] = len(page['photos'])
-        # Извлекаем URL фото - структура может быть разной, проверяем несколько вариантов
+        # В ответе CIAN URL может лежать в разных полях объекта или в виде строки.
         for idx, photo in enumerate(page['photos']):
             photo_url = None
-            # Варианты полей с URL в зависимости от структуры CIAN
             if isinstance(photo, str):
                 photo_url = photo
             elif isinstance(photo, dict):
@@ -63,13 +62,13 @@ def pagecheck(pageJS: dict):
     offers_details['is_duplicate'] = page.get('isDuplicate')
     offers_details['description'] = page.get('description')
     
-    # Фильтруем только объявления об аренде (rent), пропускаем продажу (sale)
+    # Только долгосрочная аренда: deal_type == 'rent'.
     deal_type = offers_details.get('deal_type')
     if deal_type and deal_type != 'rent':
         logging.info(f"Filtering out offer {cianid}: deal_type={deal_type} (only rent allowed)")
         return None
     
-    # Фильтруем посуточную аренду (dailyFlatRent), оставляем только долгосрочную аренду
+    # Исключаем посуточку: category != 'dailyFlatRent'.
     category = offers.get('category')
     if category == 'dailyFlatRent':
         logging.info(f"Filtering out offer {cianid}: category={category} (only long-term rent allowed, no daily rent)")

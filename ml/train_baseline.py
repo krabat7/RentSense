@@ -105,7 +105,7 @@ def prepare_features(
 
     Отбор признаков:
     - use_correlation_filter: отсекать признаки с |corr(признак, цена)| < min_correlation
-      (сейчас min_correlation=0.01 — очень мягкий порог, отсекается только явный шум, поэтому ~99 признаков).
+      (сейчас min_correlation=0.01, очень мягкий порог, отсекается только явный шум, около 99 признаков).
     - max_numeric_features: если задано (например 40), оставить только топ-N числовых признаков
       по убыванию модуля корреляции с ценой. Категориальные без отсечения. Сокращает число признаков.
     """
@@ -126,7 +126,7 @@ def prepare_features(
             low_corr_cols = [col for col, corr in correlations if abs(corr) < min_correlation]
             feature_cols = [col for col in feature_cols if col not in low_corr_cols]
             print(f"\nПосле фильтрации по корреляции (<{min_correlation}): {len(feature_cols)} признаков")
-            # Опционально: оставить только топ-N числовых по корреляции (категориальные - все)
+            # Отбор топ-N числовых признаков по |corr| с целевым; категории без отбора.
             if max_numeric_features is not None:
                 corr_dict = dict(correlations)
                 numeric_ordered = [c for c, _ in correlations if c in feature_cols]
@@ -201,7 +201,7 @@ def train_catboost(X_train, y_train, X_test, y_test, categorical_cols,
     y_pred_train_log = model.predict(X_train)
     y_pred_test_log = model.predict(X_test)
     
-    # Обратное преобразование, если использовалось логарифмирование
+    # Метрики в исходной шкале цены при use_log_target.
     if use_log_price:
         y_pred_train = np.expm1(y_pred_train_log)
         y_pred_test = np.expm1(y_pred_test_log)
@@ -586,6 +586,6 @@ def train_baseline_models(
 
 
 if __name__ == "__main__":
-    # log1p(цена) обычно улучшает обобщение на длинном хвосте цен
+    # Целевая log1p(price) для сглаживания правого хвоста распределения.
     train_baseline_models(use_log_price=True)
 

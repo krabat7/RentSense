@@ -262,7 +262,7 @@ def feature_engineering(df):
     
     price_col = 'price_actual' if 'price_actual' in df.columns else 'price'
     
-    # Базовые фичи (price_per_sqm, house_age) - нужны для других фичей
+    # Базовые производные: price_per_sqm, house_age.
     if 'total_area' in df.columns and price_col in df.columns:
         df['total_area'] = pd.to_numeric(df['total_area'], errors='coerce')
         df['price_per_sqm'] = df[price_col] / df['total_area']
@@ -274,10 +274,10 @@ def feature_engineering(df):
         df['house_age'] = df['house_age'].clip(lower=0, upper=300)
         print(f"Добавлено: house_age", flush=True)
     
-    # Применяем все фичи v2 (гео, travel, seasonal, building, clustering)
+    # Блок фич v2: гео, travel, сезонность, дом, кластеры.
     df = add_features_v2(df, use_clustering=True, n_clusters=5)
     
-    # Интеракции применяются после создания price_per_sqm
+    # Интеракции после появления price_per_sqm в датафрейме.
     df = add_interaction_features(df)
     print("  Интеракции", flush=True)
     

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Один воркер: тяжёлый Playwright только если лёгкий HTTP-путь не смог (изолирован от asyncio)
+# ProcessPoolExecutor(max_workers=1): тяжёлый Playwright вне asyncio event loop.
 _getparams_fallback_pool: ProcessPoolExecutor | None = None
 
 
@@ -42,7 +42,7 @@ app = FastAPI(
     version="2.0",
 )
 
-# Загрузка моделей при старте
+# Модели в память при старте приложения.
 try:
     quantile_models = load_quantile_models()
     baseline_model = load_baseline_model('catboost')
@@ -152,13 +152,13 @@ async def prediction(request: PredictReq):
         - price_p90: верхняя граница вилки (P90)
     """
     try:
-        # Преобразуем данные в словарь (Pydantic v2 model_dump / v1 dict)
+        # Pydantic в dict (v2 model_dump, v1 dict).
         if hasattr(request.data, 'model_dump'):
             data_dict = request.data.model_dump()
         else:
             data_dict = request.data.dict()
 
-        # Подготовка признаков
+        # Те же фичи, что при обучении.
         df = prepare_features_for_prediction(data_dict)
         df = fill_missing_for_inference(df)
 
@@ -166,7 +166,7 @@ async def prediction(request: PredictReq):
             """Цена не может быть отрицательной."""
             return max(0.0, float(p)) if p is not None else 0.0
 
-        # Если есть квантильные модели, используем их
+        # Вилка цены: три квантильные модели, если файлы есть.
         if quantile_models and 'P50' in quantile_models:
             predictions = {}
             for quantile in ['P10', 'P50', 'P90']:
@@ -181,7 +181,7 @@ async def prediction(request: PredictReq):
                 price_p90=predictions.get('p90')
             )
 
-        # Иначе используем baseline CatBoost (см. model_loader.BASELINE_LOG_TARGET, обучение на log1p)
+        # Иначе одна baseline CatBoost; обратное к log1p по BASELINE_LOG_TARGET.
         if baseline_model:
             from .model_loader import BASELINE_LOG_TARGET
 

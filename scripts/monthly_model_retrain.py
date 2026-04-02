@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
-"""
-Ежемесячное переобучение: prepare_data (БД в train/test CSV) + train_baseline_models.
+"""Сбор train/test из БД (prepare_data) и обучение baseline (train_baseline_models, log-цель).
 
-Раз в месяц для долгосрочной аренды - нормальный компромисс: рынок
-медленнее дневных колебаний, нагрузка на сервер умеренная.
+Пример cron (ежемесячно, 03:00), каталог с docker-compose.prod.yml, свой путь:
 
-Пример cron (1-е число, 03:00), из каталога с `docker-compose.prod.yml` на сервере
-(путь замените на свой, ниже — типичный вариант для клона в `/root/RentSense`):
+    0 3 1 * * cd /path/to/RentSense && docker compose -f docker-compose.prod.yml exec -T backend python scripts/monthly_model_retrain.py >> logs/monthly_retrain.log 2>&1
 
-    0 3 1 * * cd /root/RentSense && docker compose -f docker-compose.prod.yml exec -T backend python scripts/monthly_model_retrain.py >> /root/RentSense/logs/monthly_retrain.log 2>&1
-
-Нужен `.env` у compose с доступом к БД (как у `ml/prepare_data`). После прогона перезапусти API,
-чтобы подхватить новый ml/models/catboost_baseline.model (или используй volume).
+Требуются те же DB_* в окружении, что у ml/prepare_data. Новые веса в ml/models подхватывает API при рестарте или через общий volume.
 """
 from __future__ import annotations
 

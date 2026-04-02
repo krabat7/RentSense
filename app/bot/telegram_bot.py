@@ -1,9 +1,4 @@
-"""
-Telegram бот: уведомления о выгодных объявлениях по фильтрам.
-
-Команды: /start, /help, /status, /on, /off, /filters, /set
-Планировщик: каждый час с 9 до 23, алерты. В 00:00 сброс счетчиков.
-"""
+"""Telegram-бот: подписка, фильтры объявлений, почасовые алерты и сброс дневных счётчиков."""
 import asyncio
 import logging
 import os
@@ -47,12 +42,12 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or env.get('TELEGRAM_BOT_TO
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не найден в .env")
 
-# Ключи фильтров и подсказки для пользователя
+# Ключ в preferences, подпись в сообщениях и ожидаемый тип значения.
 FILTER_KEYS = {
     'district': ('Район', str),
     'rooms': ('Комнаты', int),
-    'area_min': ('Площадь от (м²)', float),
-    'area_max': ('Площадь до (м²)', float),
+    'area_min': ('Площадь от (м2)', float),
+    'area_max': ('Площадь до (м2)', float),
     'price_min': ('Цена от (руб)', (int, float)),
     'price_max': ('Цена до (руб)', (int, float)),
     'metro': ('Метро', str),
@@ -70,7 +65,7 @@ BUTTON_BACK = "Назад"
 
 
 def build_main_keyboard(is_active: bool) -> ReplyKeyboardMarkup:
-    """Одна кнопка: при включенных уведомлениях ВЫКЛ, при выключенных ВКЛ."""
+    """Главная reply-клавиатура: переключатель уведомлений и переходы в меню."""
     toggle = BUTTON_OFF if is_active else BUTTON_ON
     return ReplyKeyboardMarkup(
         [
@@ -96,14 +91,14 @@ async def main_keyboard_for_user(user_id: int) -> ReplyKeyboardMarkup:
 
 
 def _clear_filter_wizard(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Сброс мастера фильтров: ожидание текста и черновики inline (метро/комнаты)."""
+    """Сброс состояния пошаговой настройки фильтров (черновики metro/rooms)."""
     context.user_data.pop("await_filter_input", None)
     context.user_data.pop("filter_draft_metro", None)
     context.user_data.pop("filter_draft_rooms", None)
 
 
 async def _safe_query_edit(query, text: str, reply_markup=None) -> None:
-    """Telegram возвращает 400, если текст и клавиатура не изменились, не считаем это ошибкой."""
+    """Игнор ответа API message is not modified при повторной отрисовке того же текста."""
     try:
         await query.edit_message_text(text, reply_markup=reply_markup)
     except BadRequest as e:
@@ -114,7 +109,7 @@ async def _safe_query_edit(query, text: str, reply_markup=None) -> None:
 
 
 def _parse_cfg_callback(data: str) -> tuple[str | None, list[str]]:
-    """Разбор cfg без ломания ключей вроде travel_time_max."""
+    """Разбор callback data префикса cfg: ключи с двоеточием (travel_time_max) целиком."""
     if not data.startswith("cfg:"):
         return None, []
     tail = data[4:]
@@ -131,10 +126,10 @@ async def _update_prefs_in_thread(user_id: int, updates: dict) -> None:
 
 
 def _sync_status_payload(user_id: int, chat_id: int) -> tuple[str, bool]:
-    """Текст статуса + is_active для клавиатуры, один запрос в БД."""
+    """Строка статуса и флаг уведомлений; читает пользователя и preferences."""
     user = _get_or_create_user(user_id, chat_id)
     prefs = get_user_preferences(user_id)
-    status_text = "✅ Уведомления включены" if user.is_active else "❌ Уведомления выключены"
+    status_text = "[+] Уведомления включены" if user.is_active else "[-] Уведомления выключены"
     msg = (
         f"{status_text}\n"
         f"Уведомлений сегодня: {user.alerts_today}\n"
@@ -147,9 +142,9 @@ def _sync_status_payload(user_id: int, chat_id: int) -> tuple[str, bool]:
                 val = _format_rooms_pref_display(v) if k == "rooms" else ", ".join(str(x) for x in v)
             else:
                 val = str(v)
-            msg += f"  • {label}: {val}\n"
+            msg += f"  - {label}: {val}\n"
     else:
-        msg += "\nФильтры не заданы — учитываются все объявления за сегодня."
+        msg += "\nФильтры не заданы, учитываются все объявления за сегодня."
     return msg, bool(user.is_active)
 
 
@@ -165,7 +160,7 @@ def _sync_filters_and_active(user_id: int) -> tuple[dict, bool]:
 
 
 def _normalize_menu_text(s: str) -> str:
-    """Невидимые символы и полноширинное двоеточие для совпадения с текстом кнопок Telegram."""
+    """Нормализация текста меню: NFC, снятие zero-width, полноширинное двоеточие в ASCII."""
     t = unicodedata.normalize("NFC", (s or "").strip())
     for ch in ("\u200b", "\u200c", "\u200d", "\ufeff", "\u2060"):
         t = t.replace(ch, "")
@@ -174,7 +169,7 @@ def _normalize_menu_text(s: str) -> str:
 
 
 MULTI_FILTER_KEYS = {"metro", "district", "rooms"}
-# rooms: int и строка studio (flat_type в БД). Разбор отдельно.
+# rooms в БД: список int и значение studio (flat_type).
 NUMERIC_KEYS = {"area_min", "area_max", "price_min", "price_max", "travel_time_max"}
 ROOM_STUDIO = "studio"
 EDITABLE_FILTER_KEYS = [
@@ -250,10 +245,10 @@ def _format_rooms_pref_display(items) -> str:
 def _get_main_menu_text() -> str:
     return (
         "Главное меню:\n"
-        "• одна кнопка уведомлений: «Вкл» или «Выкл» по текущему состоянию\n"
-        "• «Статус» — подписка и счётчик за день\n"
-        "• фильтры: просмотр и настройка\n"
-        "• сброс фильтров"
+        "- одна кнопка уведомлений: Вкл или Выкл по текущему состоянию\n"
+        "- Статус: подписка и счетчик за день\n"
+        "- фильтры: просмотр и настройка\n"
+        "- сброс фильтров"
     )
 
 
@@ -273,12 +268,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Привет! Я бот RentSense.\n\n"
         "Я присылаю *выгодные* объявления за сегодня: где прогноз модели выше реальной цены.\n\n"
-        "• Кнопка *Уведомления* — включить или выключить (подпись меняется)\n"
-        "• /filters — посмотреть свои фильтры\n"
-        "• /set ключ значение — задать фильтр (например: /set district Пресненский)\n"
-        "• /reset_filters — сбросить все фильтры\n"
-        "• /status или кнопка «Статус»\n\n"
-        "Уведомления приходят с 9 до 23 по одному объявлению за раз. Если за день подходящих нет — пришлю подсказку расширить фильтры.",
+        "- Кнопка *Уведомления*: включить или выключить (подпись меняется)\n"
+        "- /filters: посмотреть свои фильтры\n"
+        "- /set ключ значение: задать фильтр (например: /set district Пресненский)\n"
+        "- /reset_filters: сбросить все фильтры\n"
+        "- /status или кнопка Статус\n\n"
+        "Уведомления приходят с 9 до 23 по одному объявлению за раз. Если за день подходящих нет, пришлю подсказку расширить фильтры.",
         parse_mode='Markdown',
         reply_markup=kb,
     )
@@ -287,15 +282,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 HELP_TEXT = (
     "Команды:\n"
-    "/start — начать и создать профиль\n"
-    "/on — включить уведомления\n"
-    "/off — выключить уведомления\n"
-    "/filters — текущие фильтры\n"
-    "/set ключ значение — установить фильтр (или /set ключ сброс — сбросить один)\n"
-    "/reset_filters — сбросить все фильтры\n"
-    "/status — статус подписки и уведомлений за сегодня\n"
-    "/cancel — отменить ввод фильтра (если бот ждёт текст)\n\n"
-    "Кнопки внизу: одна кнопка уведомлений (Вкл/Выкл по состоянию), «Статус», фильтры."
+    "/start: начать и создать профиль\n"
+    "/on: включить уведомления\n"
+    "/off: выключить уведомления\n"
+    "/filters: текущие фильтры\n"
+    "/set ключ значение: установить фильтр (или /set ключ сброс: сбросить один)\n"
+    "/reset_filters: сбросить все фильтры\n"
+    "/status: статус подписки и уведомлений за сегодня\n"
+    "/cancel: отменить ввод фильтра (если бот ждет текст)\n\n"
+    "Кнопки внизу: одна кнопка уведомлений (Вкл/Выкл по состоянию), Статус, фильтры."
 )
 
 
@@ -310,7 +305,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(HELP_TEXT)
         try:
             kb = await main_keyboard_for_user(uid)
-            await update.message.reply_text("\u2060", reply_markup=kb)
+            await update.message.reply_text(".", reply_markup=kb)
         except BadRequest as e2:
             logger.warning("help_command: повторная клавиатура не прошла: %s", e2)
 
@@ -335,7 +330,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning("status: reply с клавиатурой не прошёл: %s", e)
         await update.message.reply_text(msg)
         try:
-            await update.message.reply_text("\u2060", reply_markup=kb)
+            await update.message.reply_text(".", reply_markup=kb)
         except BadRequest as e2:
             logger.warning("status: повтор клавиатуры: %s", e2)
 
@@ -383,7 +378,7 @@ async def cmd_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     await update.message.reply_text(
-        "Уведомления выключены. Чтобы снова получать объявления — кнопка «Уведомления: Вкл» или /on.",
+        "Уведомления выключены. Чтобы снова получать объявления, кнопка Уведомления: Вкл или /on.",
         reply_markup=build_main_keyboard(False),
     )
 
@@ -425,13 +420,13 @@ def _build_rooms_menu(selected_rooms: list) -> InlineKeyboardMarkup:
         elif str(x).strip().isdigit():
             selected.add(int(str(x).strip()))
     rows = []
-    mark_s = "✅" if ROOM_STUDIO in selected else "☑️"
+    mark_s = "[x]" if ROOM_STUDIO in selected else "[ ]"
     rows.append(
         [InlineKeyboardButton(f"{mark_s} Студия", callback_data="cfgrooms:studio")]
     )
     row = []
     for r in [1, 2, 3, 4, 5]:
-        mark = "✅" if r in selected else "☑️"
+        mark = "[x]" if r in selected else "[ ]"
         row.append(InlineKeyboardButton(f"{mark} {r}", callback_data=f"cfgrooms:{r}"))
         if len(row) == 3:
             rows.append(row)
@@ -549,13 +544,13 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     key = context.args[0].lower().strip()
     if key not in FILTER_KEYS:
         await update.message.reply_text(
-            f"Неизвестный ключ «{key}». Доступны: " + ", ".join(FILTER_KEYS.keys())
+            f'Неизвестный ключ "{key}". Доступны: ' + ", ".join(FILTER_KEYS.keys())
         )
         return
     value_raw = " ".join(context.args[1:]).strip() if len(context.args) > 1 else ""
     if value_raw.lower() in ("сброс", "clear", "удалить", ""):
         await _update_prefs_in_thread(user_id, {key: None})
-        await update.message.reply_text(f"Фильтр «{key}» сброшен.")
+        await update.message.reply_text(f'Фильтр "{key}" сброшен.')
         return
     if key in MULTI_FILTER_KEYS:
         parts = _parse_list_text(value_raw)
@@ -565,7 +560,7 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pv = _parse_room_token(p)
                 if pv is None:
                     await update.message.reply_text(
-                        f"Неверное значение для «rooms»: {p}. Число комнат или studio/студия."
+                        f'Неверное значение для "rooms": {p}. Число комнат или studio/студия.'
                     )
                     return
                 parsed.append(pv)
@@ -575,7 +570,7 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for p in parts:
                 pv = _parse_set_value(key, p)
                 if pv is None:
-                    await update.message.reply_text(f"Неверное значение для «{key}»: {p}")
+                    await update.message.reply_text(f'Неверное значение для "{key}": {p}')
                     return
                 parsed.append(pv)
             value = parsed
@@ -584,7 +579,7 @@ async def set_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         value = _parse_set_value(key, value_raw)
     if value is None:
-        await update.message.reply_text(f"Неверное значение для «{key}». Ожидается число.")
+        await update.message.reply_text(f'Неверное значение для "{key}". Ожидается число.')
         return
     await _update_prefs_in_thread(user_id, {key: value})
     label = FILTER_KEYS[key][0]
@@ -669,14 +664,14 @@ def _build_metro_menu(metros: list[str], selected: list[str], page: int) -> Inli
     start_index = page * 8
     for i, station in enumerate(current):
         station_idx = start_index + i
-        mark = "✅" if station in selected_set else "☑️"
+        mark = "[x]" if station in selected_set else "[ ]"
         rows.append([InlineKeyboardButton(f"{mark} {station}", callback_data=f"cfgmetro:toggle:{page}:{station_idx}")])
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton("◀️", callback_data=f"cfgmetro:page:{page-1}"))
+        nav.append(InlineKeyboardButton("<", callback_data=f"cfgmetro:page:{page-1}"))
     nav.append(InlineKeyboardButton(f"{page+1}/{max_page+1}", callback_data="cfgmetro:noop"))
     if page < max_page:
-        nav.append(InlineKeyboardButton("▶️", callback_data=f"cfgmetro:page:{page+1}"))
+        nav.append(InlineKeyboardButton(">", callback_data=f"cfgmetro:page:{page+1}"))
     rows.append(nav)
     rows.append([InlineKeyboardButton("Сохранить", callback_data="cfgmetro:save"), InlineKeyboardButton("Очистить", callback_data="cfgmetro:clear")])
     rows.append([InlineKeyboardButton("Назад", callback_data="cfg:back")])
@@ -761,7 +756,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if key == "done":
             context.user_data.pop("filter_draft_metro", None)
             context.user_data.pop("filter_draft_rooms", None)
-            await _safe_query_edit(query, "Настройка завершена. Клавиатура снизу — главное меню.")
+            await _safe_query_edit(query, "Настройка завершена. Клавиатура снизу - главное меню.")
             return
         if key == "back":
             context.user_data.pop("filter_draft_metro", None)
@@ -781,7 +776,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             metros = _get_available_metro(context)
             await _safe_query_edit(
                 query,
-                "Выберите метро (можно несколько), затем «Сохранить»:",
+                'Выберите метро (можно несколько), затем "Сохранить":',
                 reply_markup=_build_metro_menu(metros, selected, page),
             )
             return
@@ -811,7 +806,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         label = FILTER_KEYS.get(key, (key, str))[0]
         await _safe_query_edit(
             query,
-            f"Введите значение для «{label}» ({key}) одним сообщением в чат.",
+            f'Введите значение для "{label}" ({key}) одним сообщением в чат.',
         )
         return
 
@@ -893,7 +888,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             page = int(parts[2])
             await _safe_query_edit(
                 query,
-                "Выберите метро (можно несколько), затем «Сохранить»:",
+                'Выберите метро (можно несколько), затем "Сохранить":',
                 reply_markup=_build_metro_menu(metros, selected, page),
             )
             return
@@ -921,7 +916,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.exception("cfgmetro toggle user_id=%s", user_id)
             await _safe_query_edit(
                 query,
-                "Выберите метро (можно несколько), затем «Сохранить»:",
+                'Выберите метро (можно несколько), затем "Сохранить":',
                 reply_markup=_build_metro_menu(metros, selected, page),
             )
             return
@@ -934,7 +929,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.exception("cfgmetro clear user_id=%s", user_id)
             await _safe_query_edit(
                 query,
-                "Выберите метро (можно несколько), затем «Сохранить»:",
+                'Выберите метро (можно несколько), затем "Сохранить":',
                 reply_markup=_build_metro_menu(metros, [], 0),
             )
             return
@@ -945,7 +940,7 @@ async def callbacks_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _hourly_alerts(context: ContextTypes.DEFAULT_TYPE):
-    """Запуск отправки алертов каждый час (только с 9 до 23)."""
+    """Почасовой запуск рассылки в допустимом интервале часов."""
     from .scheduler import ALERT_HOUR_START, ALERT_HOUR_END, send_alerts
     if ALERT_HOUR_START <= datetime.now().hour <= ALERT_HOUR_END:
         try:
@@ -955,17 +950,17 @@ async def _hourly_alerts(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _daily_reset(context: ContextTypes.DEFAULT_TYPE):
-    """Сброс счётчиков алертов в 00:00."""
+    """Ежедневный сброс счётчиков отправленных алертов."""
     from .scheduler import run_reset_daily
     await asyncio.to_thread(run_reset_daily)
 
 
 async def _on_bot_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Логирование и короткий ответ пользователю (иначе «тишина» после падения в хендлере)."""
+    """Лог исключения и ответ в чат при необработанной ошибке хендлера."""
     logger.exception("Необработанная ошибка в хендлере бота", exc_info=context.error)
     if not isinstance(update, Update):
         return
-    text = "Произошла ошибка. Попробуйте ещё раз или /cancel — если бот ждал ввод фильтра."
+    text = "Произошла ошибка. Попробуйте ещё раз или /cancel, если бот ждал ввод фильтра."
     try:
         if update.callback_query and update.callback_query.message:
             await update.callback_query.message.reply_text(text)
@@ -981,7 +976,7 @@ def main():
         return
 
     init_bot_tables()
-    # Последовательная обработка: иначе гонки по context.user_data (мастер фильтров + callback).
+    # concurrent_updates=False: один update за раз, общий context.user_data без гонок.
     application = (
         Application.builder()
         .token(TELEGRAM_BOT_TOKEN)

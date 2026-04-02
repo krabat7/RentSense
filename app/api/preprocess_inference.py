@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 from typing import Dict, Any
 
-# Добавляем путь к ml модулю
+# Импорт ml/features: корень репозитория в sys.path.
 sys.path.append(str(Path(__file__).parent.parent.parent / 'ml'))
 from features import add_features_v2
 from features.interaction_features import add_interaction_features
@@ -14,11 +14,9 @@ from features.geo_features import calculate_distance_from_center
 
 def prepare_features_for_prediction(data: Dict[str, Any]) -> pd.DataFrame:
     """Применяет фичи v2 к данным квартиры, возвращает DataFrame с признаками."""
-    # Создаем DataFrame из словаря
     df = pd.DataFrame([data])
     
-    # Базовые фичи (нужны для других фичей). При обучении использовался price_per_sqm (утечка из target).
-    # На inference цены нет, подставляем типичную по Москве (руб/м2), иначе модель получает 0 и дает шум.
+    # price_per_sqm: при известной price деление, иначе константа DEFAULT (инференс без утечки target).
     DEFAULT_PRICE_PER_SQM = 600.0
     if 'total_area' in df.columns and 'price' in df.columns and pd.notna(df['price'].iloc[0]):
         df['total_area'] = pd.to_numeric(df['total_area'], errors='coerce')
@@ -32,13 +30,10 @@ def prepare_features_for_prediction(data: Dict[str, Any]) -> pd.DataFrame:
         df['house_age'] = 2025 - df['build_year']
         df['house_age'] = df['house_age'].clip(lower=0, upper=300)
     
-    # Применяем все фичи v2
-    df = add_features_v2(df, use_clustering=False)  # Кластеризация требует много данных
-    
-    # Интеракции
+    df = add_features_v2(df, use_clustering=False)  # Кластеризация на одной строке не используется.
     df = add_interaction_features(df)
     
-    # Удаляем временные колонки, которые не нужны для модели
+    # Столбцы, не входящие в матрицу признаков модели.
     exclude_cols = [
         'cian_id', 'price', 'price_changes', 'price_from_changes',
         'price_actual', 'publication_at', 'publication_date',
@@ -67,13 +62,13 @@ def fill_missing_for_inference(df: pd.DataFrame, default_values: Dict[str, Any] 
     
     df = df.copy()
     
-    # Заполняем числовые признаки нулями или медианой
+    # Числовые NaN в 0.
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     for col in numeric_cols:
         if df[col].isna().any():
             df[col] = df[col].fillna(0)
     
-    # Заполняем категориальные признаки
+    # Категории: default_values или 'unknown'.
     categorical_cols = df.select_dtypes(include=['object']).columns
     for col in categorical_cols:
         if df[col].isna().any():

@@ -11,7 +11,7 @@ import os
 
 router = APIRouter()
 
-# Подключение к БД
+# Доступ к тем же таблицам, что у парсера (SQLAlchemy).
 env_path = Path(__file__).parent.parent.parent / '.env'
 env = dotenv_values(env_path)
 
@@ -99,7 +99,6 @@ async def search_offers(
         SearchResponse с результатами поиска
     """
     try:
-        # Построение SQL запроса
         query = """
         SELECT 
             o.cian_id,
@@ -124,7 +123,6 @@ async def search_offers(
         
         params = {}
         
-        # Фильтры
         if district:
             query += " AND a.district = :district"
             params['district'] = district
@@ -157,40 +155,32 @@ async def search_offers(
             query += " AND a.travel_time <= :travel_time_max"
             params['travel_time_max'] = travel_time_max
         
-        # Фильтр только аренды
         query += " AND od.deal_type = 'rent'"
         query += " AND o.category != 'dailyFlatRent'"
         
-        # Подсчет общего количества
         count_query = f"SELECT COUNT(*) as total FROM ({query}) as filtered"
         
-        # Сортировка
         if sort_by == 'price_asc':
             query += " ORDER BY o.price ASC"
         elif sort_by == 'price_desc':
             query += " ORDER BY o.price DESC"
         elif sort_by == 'date_desc':
             query += " ORDER BY o.publication_at DESC"
-        else:  # relevance (по умолчанию)
+        else:
             query += " ORDER BY o.publication_at DESC, o.price ASC"
         
-        # Пагинация
         offset = (page - 1) * limit
         query += " LIMIT :limit OFFSET :offset"
         params['limit'] = limit
         params['offset'] = offset
         
-        # Выполнение запросов
         with engine.connect() as conn:
-            # Подсчет общего количества
             count_result = conn.execute(text(count_query), params)
             total = count_result.fetchone()[0]
             
-            # Получение результатов
             result = conn.execute(text(query), params)
             rows = result.fetchall()
             
-            # Преобразование в список словарей
             results = []
             for row in rows:
                 results.append({

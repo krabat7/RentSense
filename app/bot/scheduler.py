@@ -34,11 +34,11 @@ env_path = Path(__file__).parent.parent.parent / '.env'
 env = dotenv_values(env_path)
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or env.get('TELEGRAM_BOT_TOKEN')
 
-# Часы работы: с 9 до 23 включительно
+# Окно рассылки: часы с ALERT_HOUR_START по ALERT_HOUR_END.
 ALERT_HOUR_START = 9
 ALERT_HOUR_END = 23
 
-# Только объявления за последние N часов, меньше шанс, что уже сняты с публикации
+# Отбор объявлений не старше MAX_OFFER_AGE_HOURS.
 MAX_OFFER_AGE_HOURS = 12
 
 NO_OFFERS_MESSAGE = (
@@ -48,7 +48,7 @@ NO_OFFERS_MESSAGE = (
 
 
 async def send_alerts():
-    """Сканирует объявления за сегодня, по одному лучшему (по выгоде) на пользователя за запуск."""
+    """Срез объявлений за сегодня: до одного алерта на пользователя (лучшая выгода по модели)."""
     if not TELEGRAM_BOT_TOKEN:
         logger.error("TELEGRAM_BOT_TOKEN не установлен")
         return
@@ -56,7 +56,6 @@ async def send_alerts():
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
     try:
-        # Объявления за последние MAX_OFFER_AGE_HOURS свежие, реже сняты с публикации
         offers = scan_new_offers(hours=MAX_OFFER_AGE_HOURS, since_midnight=False, limit=200)
         if not offers:
             logger.info("Нет объявлений за последние %s ч", MAX_OFFER_AGE_HOURS)
@@ -111,7 +110,7 @@ async def send_alerts():
             except Exception as e:
                 logger.exception("Ошибка при отправке алерта user_id=%s: %s", user.user_id, e)
 
-        # В конце дня (23) отправить «нет новых» тем, кому за день ничего не пришло
+        # Последний час окна: уведомление "нет новых" тем, у кого alerts_today == 0.
         if datetime.now().hour >= ALERT_HOUR_END - 1:
             await _send_no_offers_if_needed(bot)
     except Exception as e:
@@ -121,7 +120,7 @@ async def send_alerts():
 
 
 async def _send_no_offers_if_needed(bot: Bot):
-    """Раз в день отправить сообщение «нет новых объявлений» активным пользователям с 0 алертов."""
+    """Сообщение об отсутствии новых объявлений за день пользователям без алертов."""
     session = SessionLocal()
     try:
         users = session.query(BotUser).filter(BotUser.is_active == True).all()
@@ -133,19 +132,19 @@ async def _send_no_offers_if_needed(bot: Bot):
         try:
             await bot.send_message(chat_id=user.chat_id, text=NO_OFFERS_MESSAGE)
             mark_no_offers_message_sent(user.user_id)
-            logger.info("Отправлено «нет новых» user_id=%s", user.user_id)
+            logger.info('Отправлено "нет новых" user_id=%s', user.user_id)
             await asyncio.sleep(0.3)
         except Exception as e:
-            logger.warning("Не удалось отправить «нет новых» user_id=%s: %s", user.user_id, e)
+            logger.warning('Не удалось отправить "нет новых" user_id=%s: %s', user.user_id, e)
 
 
 def run_alert_job():
-    """Синхронная обертка для cron (каждый час с 9 до 23)."""
+    """Синхронная точка входа для почасового cron."""
     asyncio.run(send_alerts())
 
 
 def run_reset_daily():
-    """Сброс счётчиков за день (запуск в 00:00)."""
+    """Обнуление дневных счётчиков алертов."""
     reset_daily_alerts()
     logger.info("Сброс алертов за день выполнен")
 

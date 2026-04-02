@@ -3,7 +3,7 @@ from app.api.main import fastapi
 
 
 async def main():
-    """Запуск FastAPI сервера."""
+    """Точка входа: uvicorn для app.api.main.fastapi."""
     await fastapi()
 
 

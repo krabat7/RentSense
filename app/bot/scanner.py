@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-# Подключение к БД
+# Чтение свежих объявлений из MySQL.
 env_path = Path(__file__).parent.parent.parent / '.env'
 env = dotenv_values(env_path)
 

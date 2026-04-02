@@ -39,11 +39,11 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(logging.Formatter(formatter, datefmt))
 logging.getLogger().addHandler(console_handler)
 
-# Загружаем .env из корня проекта
+# .env в корне репозитория.
 env_path = Path(__file__).parent.parent.parent / '.env'
 env = dotenv_values(env_path)
 
-# Динамически загружаем все прокси из .env (PROXY1, PROXY2, ..., PROXYN)
+# proxyDict: ключи PROXY1, PROXY2, ... из .env, значение timestamp разблокировки.
 proxyDict = {}
 i = 1
 while True:
@@ -52,28 +52,24 @@ while True:
         proxyDict[proxy] = 0.0
         i += 1
     else:
-        break  # Прекращаем, когда больше нет прокси
+        break  # Конец последовательности PROXY{i}.
 proxyDict[''] = 0.0
 
-# Логируем количество загруженных прокси
 logging.info(f'Loaded {len([p for p in proxyDict.keys() if p != ""])} proxies from .env file')
 
-# Словарь для отслеживания времени последней блокировки прокси
-# Используется для разморозки заблокированных прокси
-# Инициализируем после заполнения proxyDict
+# Время начала блокировки (для разморозки по таймеру).
 proxyBlockedTime = {proxy: 0.0 for proxy in proxyDict.keys()}
 
-# Счетчик ошибок для каждого прокси (не блокируем сразу после первой ошибки)
+# Счётчик ошибок запросов на прокси (ступенчатая блокировка).
 proxyErrorCount = {proxy: 0 for proxy in proxyDict.keys()}
 
-# Счетчик ошибок подключения для каждого прокси (ERR_PROXY_CONNECTION_FAILED)
+# Ошибки подключения к прокси (отдельный счётчик).
 proxyConnectionErrors = {proxy: 0 for proxy in proxyDict.keys()}
 
-# Временный бан прокси (полное исключение из ротации, даже если разблокирован)
-# Используется для "отдыха" прокси или тестирования новых прокси
+# Ручной/файловый бан: прокси не участвует в ротации, пока флаг True.
 proxyTemporaryBan = {proxy: False for proxy in proxyDict.keys()}
 
-# Файл для сохранения временных банов прокси (синхронизация между процессами)
+# Список забаненных прокси, общий для процессов (файл в корне проекта).
 PROXY_BANS_FILE = Path(__file__).parent.parent.parent / '.proxy_bans'
 
 def load_proxy_bans():
@@ -93,7 +89,6 @@ def load_proxy_bans():
                 logging.info(f"Loaded {len(banned_proxies)} temporary bans from {PROXY_BANS_FILE} (applied {banned_count} new bans)")
         except Exception as e:
             logging.error(f"Error loading proxy bans from file {PROXY_BANS_FILE}: {e}")
-    # Если файла нет - это нормально, не логируем каждый раз
 
 def save_proxy_bans():
     """Сохраняет временно забаненные прокси в файл."""
@@ -107,29 +102,22 @@ def save_proxy_bans():
         logging.error(f"Error saving proxy bans to file {PROXY_BANS_FILE}: {e}")
 
 def check_and_unfreeze_proxies():
-    """
-    Проверяет заблокированные прокси и размораживает их через определенное время.
-    Это позволяет прокси "отдохнуть" и снова начать работать.
-    """
+    """Снимает долгую блокировку с прокси после интервала простоя (разморозка)."""
     current_time = time.time()
     unfrozen_count = 0
     
     for proxy, blocked_until in proxyDict.items():
-        # Пропускаем временно забаненные прокси
+        # Прокси из proxyTemporaryBan не трогаем.
         if proxyTemporaryBan.get(proxy, False):
             continue
             
-        # Если прокси заблокирован более чем на 5 минут, проверяем его
         if blocked_until > current_time:
             blocked_duration = blocked_until - current_time
-            # Если прокси заблокирован более 5 минут, пробуем разморозить через 10 минут после блокировки
             if blocked_duration > (5 * 60) and proxyBlockedTime[proxy] > 0:
                 time_since_block = current_time - proxyBlockedTime[proxy]
-                # Размораживаем через 10 минут после блокировки (или если прошло больше 30 минут)
                 if time_since_block > (10 * 60) or blocked_duration > (30 * 60):
                     logging.info(f'Attempting to unfreeze proxy {proxy[:20]}... (blocked for {blocked_duration/60:.1f} min)')
-                    # Сбрасываем время блокировки, но оставляем небольшую задержку
-                    proxyDict[proxy] = current_time + 30  # Даем 30 секунд перед повторным использованием
+                    proxyDict[proxy] = current_time + 30  # Короткая задержка перед повторным использованием.
                     proxyBlockedTime[proxy] = 0
                     unfrozen_count += 1
     
@@ -140,17 +128,13 @@ def check_and_unfreeze_proxies():
 
 
 def ban_proxies_by_pattern(pattern='', exclude_patterns=None):
-    """
-    Временно блокирует прокси по паттерну (например, по части IP или имени).
-    exclude_patterns - список паттернов для исключения (например, новые прокси)
-    """
+    """Помечает прокси временным баном, если URL содержит pattern (с опциональными exclude)."""
     load_proxy_bans()  # Загружаем текущие баны перед изменением
     banned_count = 0
     for proxy in proxyDict.keys():
         if proxy == '':
             continue
         if pattern and pattern in proxy:
-            # Проверяем исключения
             if exclude_patterns:
                 should_exclude = any(exc in proxy for exc in exclude_patterns)
                 if should_exclude:
@@ -164,9 +148,7 @@ def ban_proxies_by_pattern(pattern='', exclude_patterns=None):
 
 
 def unban_all_proxies():
-    """
-    Разбан всех прокси и сброс всех счетчиков ошибок (для "ресета" прокси).
-    """
+    """Снимает временные баны и обнуляет счётчики ошибок по всем прокси."""
     load_proxy_bans()  # Загружаем текущие баны перед изменением
     unbanned_count = 0
     current_time = time.time()
@@ -176,22 +158,21 @@ def unban_all_proxies():
             proxyTemporaryBan[proxy] = False
             unbanned_count += 1
             
-        # Сбрасываем все счетчики
+        # Обнуление счётчиков ошибок и времени блокировки.
         proxyErrorCount[proxy] = 0
         proxyConnectionErrors[proxy] = 0
         proxyBlockedTime[proxy] = 0
         
-        # Разблокируем прокси (ставим время блокировки в прошлое)
+        # proxyDict[proxy] < now: прокси снова доступен.
         proxyDict[proxy] = current_time - 1
     
     save_proxy_bans()  # Сохраняем изменения
     logging.info(f'Unbanned {unbanned_count} proxies and reset all error counters')
     return unbanned_count
 
-# Обновленные заголовки с актуальными версиями браузеров 2026 года
-# Разнообразие User-Agent, Referer и других заголовков для снижения риска детекта
+# Пул наборов HTTP-заголовков (User-Agent, Referer, Sec-CH-UA) для ротации.
 headers = [
-    # Chrome 131+ (актуальная версия на январь 2026)
+    # Chrome / Windows
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -229,7 +210,7 @@ headers = [
         "Accept-Encoding": "gzip, deflate, br",
         "Referer": "https://www.google.com/search?q=cian",
     },
-    # Firefox 133+ (актуальная версия на январь 2026)
+    # Firefox / Windows
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -251,7 +232,7 @@ headers = [
         "Accept-Encoding": "gzip, deflate, br, zstd",
         "Referer": "https://www.cian.ru/",
     },
-    # Edge 131+ (для разнообразия)
+    # Edge / Windows
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -269,7 +250,7 @@ headers = [
         "Accept-Encoding": "gzip, deflate, br",
         "Referer": "https://yandex.ru/",
     },
-    # Chrome на macOS (для разнообразия)
+    # Chrome / macOS
     {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -280,7 +261,7 @@ headers = [
         "Sec-Ch-Ua-Mobile": "?0",
         "Sec-Ch-Ua-Platform": '"macOS"',
     },
-    # Chrome на Linux (для разнообразия)
+    # Chrome / Linux
     {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -288,7 +269,7 @@ headers = [
         "Accept-Encoding": "gzip, deflate, br",
         "Referer": "https://yandex.ru/",
     },
-    # Прямой переход (без Referer)
+    # Без Referer
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",

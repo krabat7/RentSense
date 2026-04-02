@@ -131,7 +131,7 @@ def get_best_offers_for_user(
     сортирует по убыванию выгоды, исключает уже отправленные, возвращает до max_count штук.
     """
     filtered = filter_offers_by_preferences(offers, user_preferences)
-    # Ограничиваем число запросов к predict (например первые 30 по новизне)
+    # predict_fn для первых 30 кандидатов, не отправленных ранее ([:30]).
     to_predict = [o for o in filtered if o.get('cian_id') not in already_sent_cian_ids][:30]
     for o in to_predict:
         if o.get('predicted_price') is None:
@@ -148,10 +148,7 @@ def get_best_offers_for_user(
 
 
 def prioritize_offers(offers: list) -> list:
-    """
-    Устаревшая приоритизация (только по новизне и цене).
-    Для новых алертов используется get_best_offers_for_user с predict.
-    """
+    """Сортировка: новее и дешевле выше (без вызова предиктора)."""
     return sorted(
         offers,
         key=lambda x: (

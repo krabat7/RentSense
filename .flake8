@@ -15,10 +15,13 @@ exclude =
     mlruns,
     mlflow.db,
     catboost_info
-ignore = 
-    E203,  # whitespace before ':'
-    E501,  # line too long (handled by black)
-    W503,  # line break before binary operator
+# E203: whitespace before ':' (black compat)
+# E501: line length (black)
+# W503: line break before binary operator (black compat)
+ignore =
+    E203,
+    E501,
+    W503,
 max-complexity = 10
 per-file-ignores =
     __init__.py:F401

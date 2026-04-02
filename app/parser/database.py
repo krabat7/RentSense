@@ -10,7 +10,7 @@ Base = declarative_base()
 from pathlib import Path
 env_path = Path(__file__).parent.parent.parent / '.env'
 env = dotenv_values(env_path)
-# Приоритет: переменные окружения > .env файл > значения по умолчанию
+# Параметры БД: os.environ, затем .env, затем литералы ниже.
 DBTYPE = os.getenv('DB_TYPE') or env.get('DB_TYPE') or 'mysql+pymysql'
 LOGIN = os.getenv('DB_LOGIN') or env.get('DB_LOGIN') or 'root'
 PASS = os.getenv('DB_PASS') or env.get('DB_PASS') or 'rootpassword'

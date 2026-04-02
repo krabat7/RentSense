@@ -9,17 +9,12 @@ from .cluster_features import add_cluster_features, add_cluster_features_simple
 
 
 def add_features_v2(df, use_clustering=True, n_clusters=5):
-    """Добавляет фичи v2: гео, travel-time, сезонность, этажность, кластеризация."""
-    # 1. Гео-фичи v0
+    """Цепочка: гео, метро/время, сезонность, дом; опционально кластеры районов."""
     df = add_geo_features_v0(df)
-    # 2. Travel-time фичи
     df = add_travel_features(df)
-    # 3. Сезонные фичи
     df = add_seasonal_features(df)
-    # 4. Этажность и тип дома
     df = add_building_features(df)
-    # 5. Интеракции применяются в prepare_data.py после price_per_sqm
-    # 6. Кластеризация районов
+    # Интеракции в prepare_data / inference после price_per_sqm.
     if use_clustering:
         try:
             df = add_cluster_features(df, n_clusters=n_clusters)

@@ -45,7 +45,7 @@ class SentAlert(Base):
     )
 
 
-# Подключение к БД
+# SQLAlchemy engine/session из переменных окружения.
 env_path = Path(__file__).parent.parent.parent / '.env'
 env = dotenv_values(env_path)
 
@@ -75,7 +75,7 @@ MULTI_VALUE_KEYS = {"metro", "district", "rooms"}
 def init_bot_tables():
     """Создание таблиц для бота. При необходимости добавляет колонку no_offers_sent_at."""
     Base.metadata.create_all(engine)
-    # Миграция: добавление колонки no_offers_sent_at при отсутствии
+    # DDL: колонка no_offers_sent_at, если её ещё нет в схеме.
     try:
         with engine.connect() as conn:
             conn.execute(text(
@@ -264,7 +264,7 @@ def set_user_active(user_id: int, is_active: bool):
 
 
 def mark_no_offers_message_sent(user_id: int):
-    """Отметить, что пользователю отправлено сообщение «нет новых объявлений» сегодня."""
+    """Отметить, что пользователю отправлено сообщение "нет новых объявлений" сегодня."""
     session = SessionLocal()
     try:
         user = session.query(BotUser).filter(BotUser.user_id == user_id).first()
@@ -276,7 +276,7 @@ def mark_no_offers_message_sent(user_id: int):
 
 
 def should_send_no_offers_message(user: BotUser) -> bool:
-    """Нужно ли отправить сообщение «нет новых объявлений» (раз в день, если alerts_today == 0)."""
+    """Нужно ли отправить сообщение "нет новых объявлений" (раз в день, если alerts_today == 0)."""
     if user.alerts_today != 0:
         return False
     if not user.no_offers_sent_at:

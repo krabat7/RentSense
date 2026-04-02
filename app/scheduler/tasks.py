@@ -4,11 +4,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from app.parser.main import apartPage, listPages
 
-# Используем ThreadPoolExecutor с одним воркером для изоляции синхронного Playwright кода
-# Playwright sync API не может работать в разных потоках одновременно
+# Один поток: sync Playwright не параллелится внутри процесса.
 executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="parser_thread")
 
-# Максимальное время выполнения парсинга (в секундах)
+# Жёсткий лимит времени одного запуска парсера.
 MAX_PARSING_TIME = 7200  # 2 часа (совпадает с MAX_CYCLE_TIME в crontab.py)
 
 ROOMS = ['', 'room1', 'room2', 'room3', 'room4', 'room5', 'room6', 'room7', 'room8', 'room9']
