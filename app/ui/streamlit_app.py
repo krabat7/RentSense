@@ -447,7 +447,7 @@ if mode == "Ввести параметры":
         travel_time = st.number_input("Время до метро (мин) *", min_value=0, max_value=60, value=10)
 
         if st.button("Предсказать цену", type="primary"):
-            # Валидация обязательных полей: хотя бы адрес или район; общая площадь > 0
+            # Обязательные поля: адрес или район. Площадь больше нуля.
             has_geo = bool(address_input and address_input.strip()) or bool(district and district.strip())
             if not has_geo:
                 st.error("Укажите адрес или район (обязательно для расчёта местоположения).")

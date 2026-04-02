@@ -2,7 +2,7 @@
 Telegram бот: уведомления о выгодных объявлениях по фильтрам.
 
 Команды: /start, /help, /status, /on, /off, /filters, /set
-Планировщик: каждый час с 9 до 23, алерты; в 00:00 сброс счетчиков.
+Планировщик: каждый час с 9 до 23, алерты. В 00:00 сброс счетчиков.
 """
 import asyncio
 import logging
@@ -174,7 +174,7 @@ def _normalize_menu_text(s: str) -> str:
 
 
 MULTI_FILTER_KEYS = {"metro", "district", "rooms"}
-# rooms - смешанный список int и "studio" (flat_type в БД); парсится отдельно
+# rooms: int и строка studio (flat_type в БД). Разбор отдельно.
 NUMERIC_KEYS = {"area_min", "area_max", "price_min", "price_max", "travel_time_max"}
 ROOM_STUDIO = "studio"
 EDITABLE_FILTER_KEYS = [

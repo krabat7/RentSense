@@ -106,9 +106,8 @@ def prioritize_by_profit(
     offers: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """
-    Оставляет объявления, где предсказанная цена выше реальной;
-    сортирует по убыванию выгоды (predicted_price - price).
-    Ожидает, что у каждого offer уже есть ключ predicted_price.
+    Объявления с predicted_price выше price. Сортировка по убыванию
+    (predicted_price - price). В offer уже есть predicted_price.
     """
     with_profit = [
         o for o in offers

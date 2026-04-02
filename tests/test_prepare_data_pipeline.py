@@ -90,7 +90,7 @@ def test_clean_outliers_price_bounds():
 
 
 def test_clean_outliers_area_and_price_per_sqm():
-    # Площадь <10; площадь и цена ОК, но цена/м² > 100_000; нормальная строка
+    # Площадь меньше 10. Строка с ценой за м2 больше 100_000. Нормальная строка.
     df = pd.DataFrame(
         [
             _base_row(price_actual=50_000, total_area=5, cian_id=1),

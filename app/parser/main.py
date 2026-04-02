@@ -483,7 +483,7 @@ def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, u
             page_obj = context.new_page()
             
             start_time = time.time()
-            # domcontentloaded; 30s на попытку
+            # domcontentloaded, таймаут 30 с на попытку
             response = page_obj.goto(url, wait_until='domcontentloaded', timeout=30000)
             elapsed = time.time() - start_time
         except Exception as e:
@@ -1144,7 +1144,7 @@ def apartPage(pagesList, dbinsert=True, max_retries=2):
                     return data_fast
             logging.info("Apart page %s: fast HTTP miss, fallback to getResponse", page)
 
-        # Интерактив: без прокси быстрее; при провале с прокси как у парсера
+        # Интерактив: сначала без прокси, при сбое с прокси как у парсера
         use_px = bool(dbinsert)
         response = getResponse(page, type=1, dbinsert=dbinsert, respTry=2, use_proxy=use_px)
         if not dbinsert and (not response or response == "CAPTCHA"):

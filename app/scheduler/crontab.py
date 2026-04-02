@@ -9,7 +9,7 @@ logging.basicConfig(
 )
 
 PARSE_INTERVAL = 1800  # 30 минут между циклами
-MAX_CYCLE_TIME = 7200  # 2 часа на цикл; при превышении процесс убивается
+MAX_CYCLE_TIME = 7200  # лимит 2 ч на цикл, дальше процесс завершается
 
 
 async def run_one_cycle_subprocess():
