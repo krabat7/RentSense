@@ -1,21 +1,62 @@
 # RentSense
 
-Сервис оценки стоимости аренды квартир в Москве. Проект включает API, парсер, UI, Telegram бот и ML пайплайн с ретрейном.
+Сервис оценки стоимости аренды квартир в Москве. Проект включает API, парсер, [веб-интерфейс Streamlit](http://89.110.92.128:8501/), [Telegram-бот @RentSenseBot](https://t.me/RentSenseBot) и ML пайплайн с ретрейном.
 
 ## Сервисы и архитектура
 
-- `backend` - FastAPI API (`/health`, `/api/predict`, `/api/search`).
-- `streamlit` - web UI для ввода параметров и просмотра результата.
-- `telegram_bot` - бот с подпиской и фильтрами.
-- `parser` - фоновый сбор объявлений в БД.
+- `backend` - FastAPI API (см. раздел «Эндпоинты API»).
+- `streamlit` - web UI для ввода параметров и просмотра результата: [http://89.110.92.128:8501/](http://89.110.92.128:8501/).
+- `telegram_bot` - бот с подпиской и фильтрами: [@RentSenseBot](https://t.me/RentSenseBot).
+- `parser` - фоновый сбор объявлений в БД (см. «Планировщик парсера»).
 - `mysql` - основная база.
 - `mlflow` - UI и хранилище экспериментов.
 - `adminer` - админка БД.
+
+## Эндпоинты API
+
+Префикс REST API: `/api` (кроме проверки живости).
+
+| Метод | Путь | Назначение |
+|-------|------|------------|
+| GET | `/health` | Проверка доступности сервиса |
+| GET | `/api/getparams` | Параметры объявления по URL Циана (query `url`) |
+| POST | `/api/predict` | Прогноз цены по JSON с признаками |
+| GET | `/api/search` | Поиск похожих объявлений в БД (query-параметры) |
+| GET | `/api/metro` | Список станций метро для UI |
+
+## Планировщик парсера
+
+Сервис `parser` в compose запускает `python -m app.scheduler.crontab`: бесконечный цикл, в каждой итерации поднимается отдельный процесс `app.scheduler.run_parser_once` (Playwright и логика парсинга внутри). Между циклами пауза 30 минут, на один цикл действует лимит 2 часа (константы `PARSE_INTERVAL` и `MAX_CYCLE_TIME` в `crontab.py`), при превышении процесс завершается принудительно.
+
+Код: `app/scheduler/crontab.py`, `app/scheduler/run_parser_once.py`, `app/scheduler/tasks.py`.
+
+## Переменные окружения
+
+Подставляются из `.env` в корне (docker compose подхватывает их для сервисов).
+
+**Compose / инфраструктура**
+
+- `MYSQL_ROOT_PASSWORD` - пароль root MySQL (по умолчанию в compose: `rootpassword`).
+- `MYSQL_PASSWORD` - пароль пользователя `rentsense` (по умолчанию: `rentsense`).
+- `TELEGRAM_BOT_TOKEN` - токен Telegram-бота (обязателен для сервиса `telegram_bot`).
+- `YANDEX_GEOCODER_API_KEY` - опционально, для геокодинга в Streamlit (Яндекс до fallback на Nominatim).
+
+**Подключение к БД (в контейнерах задаются в `docker-compose.prod.yml`, при локальном запуске - те же имена в `.env`)**
+
+- `DB_TYPE`, `DB_LOGIN`, `DB_PASS`, `DB_IP`, `DB_PORT`, `DB_NAME`
+
+**Прочее**
+
+- `API_BASE_URL` - в compose задан для `streamlit` и `telegram_bot` (базовый URL API).
+- `MLFLOW_TRACKING_URI` - для backend при логировании в MLflow (в compose: `file:///app/mlruns`).
+- `RENTSENSE_BASELINE_LOG_TARGET` - опционально, `true`/`false`: обучалась ли baseline на `log1p` цены (см. `app/api/model_loader.py`).
+- `PROXY1`, `PROXY2`, ... - опционально, прокси для парсера (см. `app/parser/tools.py`).
 
 ## Структура репозитория
 
 - `app/api` - API и инференс.
 - `app/parser` - парсер и запись в БД.
+- `app/scheduler` - цикл и разовый запуск парсера для compose.
 - `app/bot` - логика бота и уведомлений.
 - `app/ui` - Streamlit интерфейс.
 - `ml` - подготовка данных, фичи, обучение.
@@ -24,7 +65,7 @@
 
 ## Быстрый запуск
 
-1. Создайте `.env` в корне (минимум БД и токен бота).
+1. Создайте `.env` в корне (см. «Переменные окружения», минимум пароли MySQL и при необходимости `TELEGRAM_BOT_TOKEN`).
 2. Поднимите сервисы:
 
 ```bash
@@ -33,11 +74,9 @@ docker compose -f docker-compose.prod.yml up -d
 
 3. Проверьте (развёрнутый сервер `89.110.92.128`):
 - API: `http://89.110.92.128:8000/health`
-- UI: `http://89.110.92.128:8501`
+- UI (Streamlit): [http://89.110.92.128:8501/](http://89.110.92.128:8501/)
 - MLflow: `http://89.110.92.128:5000`
 - Adminer: `http://89.110.92.128:8080`
-
-На той же машине, где запущен compose, можно открыть те же сервисы с хоста `localhost` и теми же номерами портов.
 
 ## ML пайплайн
 
