@@ -2,6 +2,8 @@
 logs/
 backups/
 presentation/
+vkr/
+
 *.backup*
 
 # Python cache files

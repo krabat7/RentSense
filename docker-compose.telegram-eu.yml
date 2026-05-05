@@ -1,0 +1,24 @@
+# Только Telegram-бот для отдельного сервера (EU). API и MySQL остаются на основном хосте.
+# Пример: DB_IP и API_BASE_URL - публичный IP или WireGuard-адрес основного сервера.
+services:
+  telegram_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.telegram
+    image: rentsense-telegram_bot:latest
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Moscow
+      PYTHONPATH: /app
+      DB_TYPE: mysql+pymysql
+      DB_LOGIN: ${DB_LOGIN:-root}
+      DB_PASS: ${MYSQL_ROOT_PASSWORD}
+      DB_IP: ${DB_IP}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-rentsense}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      API_BASE_URL: ${API_BASE_URL}
+    volumes:
+      - ./:/app
+      - ./logs:/app/logs
+    command: python -m app.bot.telegram_bot
