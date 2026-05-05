@@ -267,14 +267,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = build_main_keyboard(is_active)
     await update.message.reply_text(
         "Привет! Я бот RentSense.\n\n"
-        "Я присылаю *выгодные* объявления за сегодня: где прогноз модели выше реальной цены.\n\n"
-        "- Кнопка *Уведомления*: включить или выключить (подпись меняется)\n"
+        "Я присылаю выгодные объявления за сегодня: где прогноз модели выше реальной цены.\n\n"
+        "- Кнопка «Уведомления»: включить или выключить (подпись меняется)\n"
         "- /filters: посмотреть свои фильтры\n"
         "- /set ключ значение: задать фильтр (например: /set district Пресненский)\n"
         "- /reset_filters: сбросить все фильтры\n"
         "- /status или кнопка Статус\n\n"
         "Уведомления приходят с 9 до 23 по одному объявлению за раз. Если за день подходящих нет, пришлю подсказку расширить фильтры.",
-        parse_mode='Markdown',
         reply_markup=kb,
     )
     await update.message.reply_text(_get_main_menu_text(), reply_markup=kb)

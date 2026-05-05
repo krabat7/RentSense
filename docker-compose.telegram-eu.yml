@@ -12,7 +12,8 @@ services:
       PYTHONPATH: /app
       DB_TYPE: mysql+pymysql
       DB_LOGIN: ${DB_LOGIN:-root}
-      DB_PASS: ${MYSQL_ROOT_PASSWORD}
+      # Как в основном .env (DB_PASS); при необходимости продублируй значение MYSQL_ROOT_PASSWORD.
+      DB_PASS: ${DB_PASS}
       DB_IP: ${DB_IP}
       DB_PORT: ${DB_PORT:-3306}
       DB_NAME: ${DB_NAME:-rentsense}
