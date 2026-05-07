@@ -986,9 +986,53 @@ def race_fetch_flat_html_for_api(flat_id: str, wait_seconds: float = 20.0) -> st
     return None
 
 
+def _orm_row_to_param_dict(row) -> dict:
+    """Поля строки SQLAlchemy → dict для Params (без служебных колонок)."""
+    from decimal import Decimal
+
+    out: dict = {}
+    for col in row.__table__.columns:
+        if col.name in ("id", "created_at", "updated_at"):
+            continue
+        val = getattr(row, col.name)
+        if isinstance(val, Decimal):
+            val = float(val)
+        out[col.name] = val
+    return out
+
+
+def flat_params_dict_from_db(cian_id: str) -> dict | None:
+    """
+    Если объявление уже в MySQL (спарсил фоновый parser), собрать ту же структуру, что даёт pagecheck,
+    без запроса к сайту Циана.
+    """
+    try:
+        cid = int(cian_id)
+    except (TypeError, ValueError):
+        return None
+    offer_rows = DB.select(model_classes["offers"], filter_by={"cian_id": cid}, limit=1)
+    if not offer_rows:
+        logging.info("flat_params_dict_from_db: нет offers для cian_id=%s", cian_id)
+        return None
+    data: dict = {"offers": _orm_row_to_param_dict(offer_rows[0])}
+    for key, model in model_classes.items():
+        if key in ("photos", "offers"):
+            continue
+        rows = DB.select(model, filter_by={"cian_id": cid}, limit=1)
+        if rows:
+            data[key] = _orm_row_to_param_dict(rows[0])
+        else:
+            data[key] = {"cian_id": cid}
+    return data
+
+
 def parse_rent_flat_for_api(flat_id: str) -> dict | None:
     """Разбор одного объявления для /getparams: параллельные HTTP-загрузки HTML, без Playwright."""
-    html = race_fetch_flat_html_for_api(flat_id, wait_seconds=22.0)
+    try:
+        html = race_fetch_flat_html_for_api(flat_id, wait_seconds=38.0)
+    except Exception as e:
+        logging.warning("parse_rent_flat_for_api: гонка загрузчиков flat_id=%s err=%s", flat_id, e)
+        html = None
     if not html:
         logging.warning("parse_rent_flat_for_api: no HTML for flat_id=%s", flat_id)
         return None

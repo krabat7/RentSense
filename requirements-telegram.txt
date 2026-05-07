@@ -1,0 +1,7 @@
+# Минимальные зависимости для сервиса telegram_bot (без ML/парсера/UI).
+python-telegram-bot[job-queue]>=21.0,<22
+SQLAlchemy==2.0.37
+pymysql==1.1.0
+cryptography==41.0.7
+python-dotenv==1.0.1
+requests==2.32.3

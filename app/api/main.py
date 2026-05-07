@@ -63,14 +63,17 @@ def _extract_flat_id(url: str) -> str | None:
 async def getparams(url: str):
     """Извлечение параметров объявления из URL Циана."""
     try:
-        from app.parser.main import parse_rent_flat_for_api
+        from app.parser.main import flat_params_dict_from_db, parse_rent_flat_for_api
 
         flat_id = _extract_flat_id(url)
         if not flat_id:
             raise HTTPException(status_code=400, detail='Неверный формат объявления')
         data = await to_thread(parse_rent_flat_for_api, flat_id)
         if data is None or not isinstance(data, dict):
-            logger.info("getparams: лёгкий парсер не справился, fallback Playwright flat_id=%s", flat_id)
+            logger.info("getparams: HTTP не вернул карточку, пробуем MySQL flat_id=%s", flat_id)
+            data = await to_thread(flat_params_dict_from_db, flat_id)
+        if data is None or not isinstance(data, dict):
+            logger.info("getparams: без БД, fallback Playwright flat_id=%s", flat_id)
             loop = asyncio.get_running_loop()
             data = await loop.run_in_executor(
                 _get_getparams_fallback_pool(),

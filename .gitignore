@@ -21,6 +21,8 @@ __pycache__/
 *.csv
 *.json
 *.txt
+!requirements.txt
+!requirements-*.txt
 CACHED
 FETCH_HEAD
 exporting
