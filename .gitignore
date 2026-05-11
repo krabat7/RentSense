@@ -23,15 +23,7 @@ __pycache__/
 *.txt
 !requirements.txt
 !requirements-*.txt
-CACHED
-FETCH_HEAD
-exporting
-transferring
-unpacking
-naming
-resolve
-=
-[internal]
+.ipynb_checkpoints/
 
 # DVC
 .dvc/cache/

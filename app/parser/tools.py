@@ -74,7 +74,6 @@ PROXY_BANS_FILE = Path(__file__).parent.parent.parent / '.proxy_bans'
 
 def load_proxy_bans():
     """Загружает временно забаненные прокси из файла."""
-    global proxyTemporaryBan
     if PROXY_BANS_FILE.exists():
         try:
             with open(PROXY_BANS_FILE, 'r', encoding='utf-8') as f:

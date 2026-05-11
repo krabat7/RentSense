@@ -133,7 +133,6 @@ def close_browser():
 _captcha_count = {}
 
 def getResponse(page, type=0, respTry=5, sort=None, rooms=None, dbinsert=True, use_proxy=True):
-    global _captcha_count
     logging.info(f'getResponse: Starting for page={page}, type={type}, respTry={respTry}, use_proxy={use_proxy}')
     
     proxy = None
@@ -987,7 +986,7 @@ def race_fetch_flat_html_for_api(flat_id: str, wait_seconds: float = 20.0) -> st
 
 
 def _orm_row_to_param_dict(row) -> dict:
-    """Поля строки SQLAlchemy → dict для Params (без служебных колонок)."""
+    """Поля строки SQLAlchemy в dict для Params без служебных колонок."""
     from decimal import Decimal
 
     out: dict = {}

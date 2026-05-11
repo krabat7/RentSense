@@ -87,6 +87,5 @@ def load_baseline_model(model_name: str = 'catboost', models_dir: Optional[str] 
 
 def clear_cache():
     """Очистка кэша моделей."""
-    global _models_cache
     _models_cache.clear()
     logger.info("Кэш моделей очищен")

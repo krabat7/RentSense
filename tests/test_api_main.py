@@ -111,3 +111,28 @@ def test_predict_baseline_with_mock_model(api_app, monkeypatch):
     body = r.json()
     assert body["price"] == 75_000.0
     mock.predict.assert_called_once()
+
+
+def test_rate_limit_predict_returns_429_when_exceeded(api_app, monkeypatch):
+    from app.api import main as api_main
+    from app.api import model_loader as ml_mod
+    from app.api.rate_limit import clear_rate_limit_state
+
+    mock = MagicMock()
+    mock.feature_names_ = None
+    mock.predict = MagicMock(return_value=np.array([75_000.0], dtype=np.float64))
+    monkeypatch.setattr(api_main, "quantile_models", {})
+    monkeypatch.setattr(api_main, "baseline_model", mock)
+    monkeypatch.setattr(ml_mod, "BASELINE_LOG_TARGET", False)
+
+    monkeypatch.setenv("RS_RATE_LIMIT_ENABLED", "1")
+    monkeypatch.setenv("RS_RATE_LIMIT_API_PER_MINUTE", "2")
+    clear_rate_limit_state()
+
+    client = TestClient(api_app)
+    body = _minimal_predict_body()
+    assert client.post("/api/predict", json=body).status_code == 200
+    assert client.post("/api/predict", json=body).status_code == 200
+    r = client.post("/api/predict", json=body)
+    assert r.status_code == 429
+    mock.predict.assert_called()

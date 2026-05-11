@@ -13,6 +13,7 @@ from .model_loader import load_baseline_model, load_quantile_models
 from .models import Params, PredictReq, PredictResponse
 from .preprocess import preparams
 from .preprocess_inference import fill_missing_for_inference, prepare_features_for_prediction
+from .rate_limit import add_rate_limit_middleware
 from .threads import to_thread
 
 logger = logging.getLogger(__name__)
@@ -209,6 +210,8 @@ from .search import router as search_router
 
 app.include_router(router, prefix='/api')
 app.include_router(search_router, prefix='/api')
+
+add_rate_limit_middleware(app)
 
 
 async def fastapi():
